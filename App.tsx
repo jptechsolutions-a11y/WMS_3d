@@ -6,8 +6,9 @@ import { Handheld } from './components/Handheld';
 import { processData, parseCSV } from './utils/dataProcessor';
 import { MergedData, ViewMode, FilterState, RawAddressRow, RawItemRow, AddressStatus, ReceiptFilterType } from './types';
 import { Upload, AlertTriangle } from 'lucide-react';
+import { DIMENSIONS } from './constants'; // Importando para cálculos de posição
 
-// ... (helpers parseDatePTBR e isSameDay mantêm-se iguais) ...
+// Helper to parse DD/MM/YYYY to Date object
 const parseDatePTBR = (dateStr: string): Date | null => {
   if (!dateStr) return null;
   const parts = dateStr.split('/');
@@ -45,10 +46,10 @@ export default function App() {
     expiryDays: null,
     receiptType: 'ALL',
     receiptDate: new Date().toISOString().split('T')[0],
-    sector: [] // [NOVO] Inicialmente vazio (será populado ao carregar)
+    sector: [] 
   });
 
-  // [NOVO] Extrair setores únicos dos dados
+  // Extrair setores únicos dos dados
   const availableSectors = useMemo(() => {
      const sectors = new Set<string>();
      data.forEach(d => {
@@ -57,12 +58,43 @@ export default function App() {
      return Array.from(sectors).sort();
   }, [data]);
 
-  // [NOVO] Popula o filtro de setores quando os dados carregam
+  // Popula o filtro de setores quando os dados carregam
   useEffect(() => {
      if (availableSectors.length > 0) {
          setFilters(prev => ({ ...prev, sector: availableSectors }));
      }
   }, [availableSectors]);
+
+  // [NOVO] Efeito para movimentar a câmera quando o filtro de setor muda
+  useEffect(() => {
+      // Só executa se tiver dados, se o filtro de setor não for vazio e não for "todos" (opcional, aqui move sempre que filtra específico)
+      const isFilteringSpecific = filters.sector.length > 0 && filters.sector.length < availableSectors.length;
+      
+      if (isFilteringSpecific && data.length > 0) {
+          // Encontrar o primeiro item que pertence a um dos setores filtrados
+          // A lógica aqui busca o item com maior Z (início da rua) desse setor
+          let targetX = 0;
+          let targetZ = -Infinity;
+          let found = false;
+
+          for (const d of data) {
+              if (filters.sector.includes(d.sector)) {
+                  // Preferência: Pegar um item próximo ao início da rua (Z maior)
+                  if (d.z > targetZ) {
+                      targetZ = d.z;
+                      targetX = d.x;
+                      found = true;
+                  }
+              }
+          }
+
+          if (found) {
+              // Move a câmera para a frente do setor encontrado
+              handleTeleport(targetX, 1.7, targetZ + 5);
+          }
+      }
+  }, [filters.sector, data, availableSectors.length]);
+
 
   // Calculate visible items
   const visibleItemIds = useMemo(() => {
@@ -71,16 +103,12 @@ export default function App() {
     const hasSearch = !!searchLower;
     const hasExpiry = filters.expiryDays !== null;
     const hasReceipt = filters.receiptType !== 'ALL';
-    // [NOVO] Check se filtro de setor está ativo (se array não estiver vazio)
-    // Se estiver vazio, assume que nada está selecionado, ou podemos assumir todos.
-    // Pela lógica do useEffect acima, ele preenche com todos. Então se estiver vazio é pq o usuário desmarcou tudo.
     const allowedSectors = new Set(filters.sector);
     
     const now = new Date();
     now.setHours(0,0,0,0);
 
     data.forEach(d => {
-       // [NOVO] Filtro de Setor
        if (!allowedSectors.has(d.sector)) return;
 
        let matches = true;
@@ -98,7 +126,6 @@ export default function App() {
        }
 
        if (matches && hasExpiry) {
-           // ... (lógica de validade mantida) ...
            if (!relevantItem || !relevantItem.VALIDADE) {
                matches = false;
            } else {
@@ -114,7 +141,6 @@ export default function App() {
        }
 
        if (matches && hasReceipt) {
-           // ... (lógica de recebimento mantida) ...
            if (!relevantItem || !relevantItem.RECEBIMENTO) {
                matches = false;
            } else {
@@ -159,7 +185,7 @@ export default function App() {
        if (matches) ids.add(d.id);
     });
     return ids;
-  }, [data, filters]); // Adicionei filters como dependência geral
+  }, [data, filters]);
 
   const stats = useMemo(() => {
     const s = {
@@ -169,7 +195,6 @@ export default function App() {
     };
 
     data.forEach(d => {
-      // [NOVO] Considerar o setor nas estatísticas também
       if (!filters.sector.includes(d.sector)) return;
 
       const isTypeVisible = filters.type.includes(d.rawAddress.ESP);
@@ -184,7 +209,6 @@ export default function App() {
           if (d.rawAddress.STATUS === AddressStatus.Blocked) s.blocked++;
       }
 
-      // Estatísticas gerais (Apanha/Pulmão) - geralmente refletem o estado físico, mas vamos aplicar o filtro de setor nelas também para coerência
       if (d.rawAddress.ESP === 'A') {
           s.totalApanha++;
           if (d.rawAddress.STATUS !== AddressStatus.Blocked) s.validApanha++;
@@ -227,10 +251,10 @@ export default function App() {
 
   const handleTeleport = (x: number, y: number, z: number) => {
     setTeleportPos({ x, y, z });
+    // Pequeno delay para resetar o estado e permitir novos teleportes para o mesmo lugar se necessário
     setTimeout(() => setTeleportPos(null), 100);
   };
 
-  // Componente de Upload (Mantido igual)
   if (data.length === 0) {
     return (
       <div className="w-full h-screen bg-[#0f172a] text-white flex items-center justify-center p-4">
@@ -272,7 +296,6 @@ export default function App() {
   const filteredDataFor2D = data.filter(d => 
     filters.type.includes(d.rawAddress.ESP) && 
     filters.status.includes(d.rawAddress.STATUS) &&
-    // [NOVO] Filtro de Setor no 2D
     filters.sector.includes(d.sector) &&
     visibleItemIds.has(d.id) 
   );
@@ -288,7 +311,7 @@ export default function App() {
         stats={stats}
         colorMode={colorMode}
         setColorMode={setColorMode}
-        availableSectors={availableSectors} // [NOVO] Passando os setores
+        availableSectors={availableSectors}
       />
       
       <main className="flex-1 relative h-full">
@@ -298,10 +321,6 @@ export default function App() {
              visibleStatus={filters.status} 
              visibleTypes={filters.type} 
              visibleItemIds={visibleItemIds}
-             // [NOVO] Não preciso passar o filtro de setor explicitamente pois visibleItemIds já considera ele
-             // Mas se o Scene3D filtrar internamente, preciso garantir. 
-             // O seu Scene3D usa visibleStatus e visibleTypes e visibleItemIds. 
-             // Como meu visibleItemIds já filtrou o setor, o Scene3D vai esconder os itens corretamente.
              mode={viewMode === '3D_WALK' ? 'WALK' : 'ORBIT'} 
              onSelect={(item) => setSelectedId(item.id)}
              selectedId={selectedId}
