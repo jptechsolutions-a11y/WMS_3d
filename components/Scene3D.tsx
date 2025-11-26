@@ -16,7 +16,6 @@ import { MergedData } from '../types';
 import { DIMENSIONS, COLORS } from '../constants';
 import { extractNumber } from '../utils/dataProcessor';
 
-// ... (keyboardMap e funções de geometria permanecem iguais)
 const keyboardMap = [
   { name: 'forward', keys: ['ArrowUp', 'w', 'W'] },
   { name: 'backward', keys: ['ArrowDown', 's', 'S'] },
@@ -26,81 +25,107 @@ const keyboardMap = [
   { name: 'run', keys: ['Shift'] },
 ];
 
+interface SceneProps {
+  data: MergedData[];
+  visibleStatus: string[]; 
+  visibleTypes: string[]; 
+  visibleItemIds: Set<string>;
+  mode: 'WALK' | 'ORBIT';
+  onSelect: (data: MergedData) => void;
+  selectedId: string | null;
+  teleportPos: { x: number, y: number, z: number } | null;
+  isMobileOpen: boolean;
+  colorMode: 'REALISTIC' | 'STATUS';
+}
+
+// ---- Geometry Generators ----
+
 const mergeGeometries = (geometries: THREE.BufferGeometry[]): THREE.BufferGeometry => {
-    // ... (mesmo código do original)
-    // Para economizar espaço na resposta, assuma que esta função auxiliar não mudou
-    let totalPos = 0, totalNorm = 0, totalUV = 0, totalInd = 0;
-    geometries.forEach(g => {
-        totalPos += g.attributes.position.array.length;
-        totalNorm += g.attributes.normal.array.length;
-        totalUV += g.attributes.uv.array.length;
-        if (g.index) totalInd += g.index.array.length;
-    });
-    const posArr = new Float32Array(totalPos);
-    const normArr = new Float32Array(totalNorm);
-    const uvArr = new Float32Array(totalUV);
-    const indArr = new Uint32Array(totalInd);
-    let offsetPos = 0, offsetNorm = 0, offsetUV = 0, offsetInd = 0, indexOffset = 0;
-    geometries.forEach(g => {
-        posArr.set(g.attributes.position.array, offsetPos);
-        normArr.set(g.attributes.normal.array, offsetNorm);
-        uvArr.set(g.attributes.uv.array, offsetUV);
-        if (g.index) {
-            for (let i = 0; i < g.index.array.length; i++) {
-                indArr[offsetInd + i] = g.index.array[i] + indexOffset;
-            }
-            offsetInd += g.index.array.length;
-        }
-        indexOffset += g.attributes.position.array.length / 3;
-        offsetPos += g.attributes.position.array.length;
-        offsetNorm += g.attributes.normal.array.length;
-        offsetUV += g.attributes.uv.array.length;
-    });
-    const merged = new THREE.BufferGeometry();
-    merged.setAttribute('position', new THREE.BufferAttribute(posArr, 3));
-    merged.setAttribute('normal', new THREE.BufferAttribute(normArr, 3));
-    merged.setAttribute('uv', new THREE.BufferAttribute(uvArr, 2));
-    merged.setIndex(new THREE.BufferAttribute(indArr, 1));
-    return merged;
+  let totalPos = 0, totalNorm = 0, totalUV = 0, totalInd = 0;
+  geometries.forEach(g => {
+    totalPos += g.attributes.position.array.length;
+    totalNorm += g.attributes.normal.array.length;
+    totalUV += g.attributes.uv.array.length;
+    if (g.index) totalInd += g.index.array.length;
+  });
+
+  const posArr = new Float32Array(totalPos);
+  const normArr = new Float32Array(totalNorm);
+  const uvArr = new Float32Array(totalUV);
+  const indArr = new Uint32Array(totalInd);
+
+  let offsetPos = 0, offsetNorm = 0, offsetUV = 0, offsetInd = 0, indexOffset = 0;
+
+  geometries.forEach(g => {
+    posArr.set(g.attributes.position.array, offsetPos);
+    normArr.set(g.attributes.normal.array, offsetNorm);
+    uvArr.set(g.attributes.uv.array, offsetUV);
+    
+    if (g.index) {
+      for (let i = 0; i < g.index.array.length; i++) {
+        indArr[offsetInd + i] = g.index.array[i] + indexOffset;
+      }
+      offsetInd += g.index.array.length;
+    }
+    
+    indexOffset += g.attributes.position.array.length / 3;
+    
+    offsetPos += g.attributes.position.array.length;
+    offsetNorm += g.attributes.normal.array.length;
+    offsetUV += g.attributes.uv.array.length;
+  });
+
+  const merged = new THREE.BufferGeometry();
+  merged.setAttribute('position', new THREE.BufferAttribute(posArr, 3));
+  merged.setAttribute('normal', new THREE.BufferAttribute(normArr, 3));
+  merged.setAttribute('uv', new THREE.BufferAttribute(uvArr, 2));
+  merged.setIndex(new THREE.BufferAttribute(indArr, 1));
+  
+  return merged;
 };
 
 const createDetailedPalletGeometry = () => {
-    // ... (mesmo código do original)
-    const width = 1.65; const depth = 1.2; const runnerHeight = 0.10;
-    const parts: THREE.BufferGeometry[] = [];
-    for (let i = 0; i < 3; i++) {
-        const zPos = (i - 1) * (depth * 0.45); 
-        const g = new THREE.BoxGeometry(width, runnerHeight, 0.1);
-        g.translate(0, runnerHeight/2, zPos);
-        parts.push(g);
-    }
-    const boardHeight = 0.05; const boardWidth = 0.2; const gap = (width - (5 * boardWidth)) / 4;
-    for (let i = 0; i < 5; i++) {
-        const xPos = (i - 2) * (boardWidth + gap);
-        const g = new THREE.BoxGeometry(boardWidth, boardHeight, depth);
-        g.translate(xPos, runnerHeight + boardHeight/2, 0);
-        parts.push(g);
-    }
-    return mergeGeometries(parts);
+  const width = 1.65; 
+  const depth = 1.2;
+  const runnerHeight = 0.10;
+  const parts: THREE.BufferGeometry[] = [];
+  for (let i = 0; i < 3; i++) {
+    const zPos = (i - 1) * (depth * 0.45); 
+    const g = new THREE.BoxGeometry(width, runnerHeight, 0.1);
+    g.translate(0, runnerHeight/2, zPos);
+    parts.push(g);
+  }
+  const boardHeight = 0.05;
+  const boardWidth = 0.2;
+  const gap = (width - (5 * boardWidth)) / 4;
+  for (let i = 0; i < 5; i++) {
+    const xPos = (i - 2) * (boardWidth + gap);
+    const g = new THREE.BoxGeometry(boardWidth, boardHeight, depth);
+    g.translate(xPos, runnerHeight + boardHeight/2, 0);
+    parts.push(g);
+  }
+  return mergeGeometries(parts);
 };
 
 const createBoxStackGeometry = () => {
-    // ... (mesmo código do original)
-    const boxW = 0.78; const boxH = 0.48; const boxD = 0.54; const gap = 0.02;
-    const parts: THREE.BufferGeometry[] = [];
-    for (let x = -1; x <= 1; x += 2) {
-        for (let y = 0; y < 2; y++) {
-            for (let z = -1; z <= 1; z += 2) {
-                const g = new THREE.BoxGeometry(boxW, boxH, boxD);
-                const px = x * (boxW/2 + gap/2);
-                const py = y * (boxH + gap) + (boxH/2);
-                const pz = z * (boxD/2 + gap/2);
-                g.translate(px, py, pz);
-                parts.push(g);
-            }
+  const boxW = 0.78; 
+  const boxH = 0.48; 
+  const boxD = 0.54; 
+  const gap = 0.02;
+  const parts: THREE.BufferGeometry[] = [];
+  for (let x = -1; x <= 1; x += 2) {
+    for (let y = 0; y < 2; y++) {
+        for (let z = -1; z <= 1; z += 2) {
+            const g = new THREE.BoxGeometry(boxW, boxH, boxD);
+            const px = x * (boxW/2 + gap/2);
+            const py = y * (boxH + gap) + (boxH/2);
+            const pz = z * (boxD/2 + gap/2);
+            g.translate(px, py, pz);
+            parts.push(g);
         }
     }
-    return mergeGeometries(parts);
+  }
+  return mergeGeometries(parts);
 };
 
 const boxStackGeometry = createBoxStackGeometry();
@@ -109,11 +134,9 @@ const uprightPostGeometry = new THREE.BoxGeometry(0.08, 1, 0.08);
 const uprightBaseGeometry = new THREE.CylinderGeometry(0.12, 0.15, 0.2, 8); 
 const beamGeometry = new THREE.BoxGeometry(DIMENSIONS.BAY_WIDTH, DIMENSIONS.BEAM_THICKNESS, 0.08); 
 
-// [ATUALIZADO] Placas com Setor
 const StreetLabels = ({ data }: { data: MergedData[] }) => {
   const streets = useMemo(() => {
     const map = new Map<string, { maxZ: number, x: number, sector: string }>();
-    
     data.forEach(d => {
       const rua = d.rawAddress.RUA;
       if (!map.has(rua)) {
@@ -121,6 +144,7 @@ const StreetLabels = ({ data }: { data: MergedData[] }) => {
         map.set(rua, { maxZ: d.z, x: 0, sector: d.sector || '' }); 
       } else {
         const entry = map.get(rua)!;
+        // Pega o MAIOR valor de Z (o início da rua)
         entry.maxZ = Math.max(entry.maxZ, d.z);
       }
     });
@@ -132,7 +156,7 @@ const StreetLabels = ({ data }: { data: MergedData[] }) => {
             name,
             sector: val.sector,
             x: centerX,
-            z: val.maxZ + 4 // Frente da rua
+            z: val.maxZ + 4 // Posiciona na frente da rua
         };
     });
   }, [data]);
@@ -141,30 +165,29 @@ const StreetLabels = ({ data }: { data: MergedData[] }) => {
     <group>
       {streets.map((s) => (
         <group key={s.name} position={[s.x, 6, s.z]}>
-           {/* Haste */}
            <mesh position={[0, 1, 0]}>
              <cylinderGeometry args={[0.05, 0.05, 3]} />
              <meshStandardMaterial color="#334155" />
            </mesh>
-           {/* Placa */}
+           {/* Placa ligeiramente maior para caber o setor */}
            <mesh position={[0, 0, 0]}>
-             <boxGeometry args={[3, 1.2, 0.1]} /> {/* Levemente maior para caber o setor */}
+             <boxGeometry args={[3, 1.2, 0.1]} />
              <meshStandardMaterial color="#0f172a" />
            </mesh>
            {/* Nome da Rua */}
-           <Text position={[0, 0.25, 0.06]} fontSize={0.5} color="#06b6d4" anchorX="center" anchorY="middle" font="https://fonts.gstatic.com/s/inter/v12/UcCO3FwrK3iLTeHuS_fvQtMwCp50KnMw2boKoduKmMEVuLyfAZ9hjp-Ek-_EeA.woff">
+           <Text position={[0, 0.25, 0.06]} fontSize={0.5} color="#06b6d4" anchorX="center" anchorY="middle">
              {s.name}
            </Text>
            {/* Nome do Setor (Embaixo) */}
-           <Text position={[0, -0.25, 0.06]} fontSize={0.25} color="#94a3b8" anchorX="center" anchorY="middle" font="https://fonts.gstatic.com/s/inter/v12/UcCO3FwrK3iLTeHuS_fvQtMwCp50KnMw2boKoduKmMEVuLyfAZ9hjp-Ek-_EeA.woff">
+           <Text position={[0, -0.25, 0.06]} fontSize={0.25} color="#94a3b8" anchorX="center" anchorY="middle">
              {s.sector}
            </Text>
-           
-           {/* Verso da Placa */}
-           <Text position={[0, 0.25, -0.06]} rotation={[0, Math.PI, 0]} fontSize={0.5} color="#06b6d4" anchorX="center" anchorY="middle" font="https://fonts.gstatic.com/s/inter/v12/UcCO3FwrK3iLTeHuS_fvQtMwCp50KnMw2boKoduKmMEVuLyfAZ9hjp-Ek-_EeA.woff">
+
+           {/* Verso */}
+           <Text position={[0, 0.25, -0.06]} rotation={[0, Math.PI, 0]} fontSize={0.5} color="#06b6d4" anchorX="center" anchorY="middle">
              {s.name}
            </Text>
-           <Text position={[0, -0.25, -0.06]} rotation={[0, Math.PI, 0]} fontSize={0.25} color="#94a3b8" anchorX="center" anchorY="middle" font="https://fonts.gstatic.com/s/inter/v12/UcCO3FwrK3iLTeHuS_fvQtMwCp50KnMw2boKoduKmMEVuLyfAZ9hjp-Ek-_EeA.woff">
+           <Text position={[0, -0.25, -0.06]} rotation={[0, Math.PI, 0]} fontSize={0.25} color="#94a3b8" anchorX="center" anchorY="middle">
              {s.sector}
            </Text>
         </group>
@@ -173,12 +196,10 @@ const StreetLabels = ({ data }: { data: MergedData[] }) => {
   );
 };
 
-// ... (RackSystem, WalkController, SceneProps interface mantidos)
 interface ItemMetadata {
   span: number;
 }
-// OBS: Para economizar espaço, estou mantendo a lógica do RackSystem oculta aqui, pois ela não mudou. 
-// Mas no código final, o RackSystem deve estar presente como estava antes.
+
 const RackSystem = ({ 
     data, 
     visibleStatus = [], 
@@ -196,227 +217,288 @@ const RackSystem = ({
     selectedId: string | null,
     colorMode: 'REALISTIC' | 'STATUS'
 }) => {
-    // ... [CÓDIGO DO RACK SYSTEM ANTERIOR AQUI - SEM ALTERAÇÕES] ...
-    const meshRefBoxes = useRef<THREE.InstancedMesh>(null);
-    const meshRefPallets = useRef<THREE.InstancedMesh>(null);
-    const meshRefUprights = useRef<THREE.InstancedMesh>(null);
-    const meshRefUprightBases = useRef<THREE.InstancedMesh>(null);
-    const meshRefBeams = useRef<THREE.InstancedMesh>(null);
-    const [hoveredInstance, setHoveredInstance] = useState<number | null>(null);
-    const { columns, itemMeta, maxBeams, uprightInstances } = useMemo(() => {
-        const stackMap = new Map<string, MergedData[]>();
-        const bayMap = new Map<string, { x: number, z: number, maxLevel: number, minLevel: number, blockedLevels: Set<number> }>();
-        data.forEach(d => {
-            if (!visibleTypes.includes(d.rawAddress.ESP)) return;
-            const stackKey = `${d.rawAddress.RUA}-${d.rawAddress.PRED}-${d.rawAddress.SL}`;
-            if (!stackMap.has(stackKey)) stackMap.set(stackKey, []);
-            stackMap.get(stackKey)!.push(d);
-            const bayKey = `${d.rawAddress.RUA}-${d.rawAddress.PRED}`;
-            const visualLevel = Math.round(d.y / DIMENSIONS.RACK_HEIGHT) + 1;
-            if (!bayMap.has(bayKey)) {
-                const predIdx = extractNumber(d.rawAddress.PRED);
-                const seq = Math.floor((predIdx - 1) / 2);
-                const bayZ = -(seq * DIMENSIONS.BAY_WIDTH);
-                bayMap.set(bayKey, { x: d.x, z: bayZ, maxLevel: visualLevel, minLevel: visualLevel, blockedLevels: new Set() });
-            } else {
-                const existing = bayMap.get(bayKey)!;
-                if (visualLevel > existing.maxLevel) existing.maxLevel = visualLevel;
-                if (visualLevel < existing.minLevel) existing.minLevel = visualLevel;
-            }
-        });
-        const itemMetaMap = new Map<string, ItemMetadata>();
-        stackMap.forEach((items, key) => {
-            items.sort((a, b) => a.y - b.y);
-            for (let i = 0; i < items.length; i++) {
-                const current = items[i];
-                const currentLevel = Math.round(current.y / DIMENSIONS.RACK_HEIGHT) + 1;
-                let span = 1;
-                if (current.rawAddress.ESP === 'A') {
-                    const next = items[i+1];
-                    if (next) {
-                        const nextLevel = Math.round(next.y / DIMENSIONS.RACK_HEIGHT) + 1;
-                        span = nextLevel - currentLevel;
-                    } else { span = 1; }
-                }
-                if (span < 1) span = 1;
-                itemMetaMap.set(current.id, { span });
-                if (span > 1) {
-                    const bayKey = `${current.rawAddress.RUA}-${current.rawAddress.PRED}`;
-                    if (bayMap.has(bayKey)) {
-                        for (let k = 1; k < span; k++) {
-                            bayMap.get(bayKey)!.blockedLevels.add(currentLevel + k);
-                        }
-                    }
-                }
-            }
-        });
-        const cols = Array.from(bayMap.entries()).map(([key, val]) => ({ ...val, key }));
-        let totalLevels = 0;
-        cols.forEach(c => totalLevels += c.maxLevel);
-        return { columns: cols, itemMeta: itemMetaMap, maxBeams: totalLevels * 2, uprightInstances: cols.length * 4 };
-    }, [data, visibleTypes]);
+  const meshRefBoxes = useRef<THREE.InstancedMesh>(null);
+  const meshRefPallets = useRef<THREE.InstancedMesh>(null);
+  const meshRefUprights = useRef<THREE.InstancedMesh>(null);
+  const meshRefUprightBases = useRef<THREE.InstancedMesh>(null);
+  const meshRefBeams = useRef<THREE.InstancedMesh>(null);
+  
+  const [hoveredInstance, setHoveredInstance] = useState<number | null>(null);
 
-    useLayoutEffect(() => {
-        if (!meshRefBoxes.current || !meshRefUprights.current || !meshRefUprightBases.current || !meshRefBeams.current || !meshRefPallets.current) return;
-        const dummy = new THREE.Object3D();
-        const color = new THREE.Color();
-        const cardColors = [new THREE.Color(COLORS.BOX_CARDBOARD), new THREE.Color(COLORS.BOX_CARDBOARD_DARK), new THREE.Color('#d4b48d')];
+  const { columns, itemMeta, maxBeams, uprightInstances } = useMemo(() => {
+    const stackMap = new Map<string, MergedData[]>();
+    const bayMap = new Map<string, { x: number, z: number, maxLevel: number, minLevel: number, blockedLevels: Set<number> }>();
 
-        data.forEach((item, i) => {
-            const isVisibleStatus = visibleStatus.includes(item.rawAddress.STATUS);
-            const isVisibleType = visibleTypes.includes(item.rawAddress.ESP);
-            const isVisibleSearchAndExpiry = visibleItemIds && visibleItemIds.has(item.id);
-            const isVisible = isVisibleStatus && isVisibleType && isVisibleSearchAndExpiry;
-            const span = itemMeta.get(item.id)?.span || 1;
-            const yBase = item.y;
-            if (isVisible) {
-                dummy.position.set(item.x, yBase, item.z);
-                dummy.rotation.set(0, 0, 0);
-                dummy.scale.set(1, 1, 1);
-                dummy.updateMatrix();
-                meshRefPallets.current!.setMatrixAt(i, dummy.matrix);
-                meshRefPallets.current!.setColorAt(i, color.set(COLORS.PALLET_BLUE));
-                const totalHeightAvailable = (span * DIMENSIONS.RACK_HEIGHT) - DIMENSIONS.PALLET_HEIGHT - 0.2;
-                const boxY = yBase + DIMENSIONS.PALLET_HEIGHT; 
-                dummy.position.set(item.x, boxY, item.z);
-                const scaleY = totalHeightAvailable / 1.0; 
-                dummy.scale.set(1, scaleY, 1);
-                dummy.updateMatrix();
-                meshRefBoxes.current!.setMatrixAt(i, dummy.matrix);
-                if (item.id === selectedId) { color.set(COLORS.SELECTED); } 
-                else if (i === hoveredInstance) { color.set(COLORS.HOVER); } 
-                else if (colorMode === 'STATUS') { color.set(COLORS[item.rawAddress.STATUS] || COLORS.DEFAULT); } 
-                else { const charCode = item.id.charCodeAt(item.id.length - 1); color.set(cardColors[charCode % 3]); }
-                meshRefBoxes.current!.setColorAt(i, color);
-            } else {
-                dummy.scale.set(0, 0, 0);
-                dummy.updateMatrix();
-                meshRefBoxes.current!.setMatrixAt(i, dummy.matrix);
-                meshRefPallets.current!.setMatrixAt(i, dummy.matrix);
-            }
-        });
-        meshRefBoxes.current.instanceMatrix.needsUpdate = true;
-        if (meshRefBoxes.current.instanceColor) meshRefBoxes.current.instanceColor.needsUpdate = true;
-        meshRefPallets.current.instanceMatrix.needsUpdate = true;
-        if (meshRefPallets.current.instanceColor) meshRefPallets.current.instanceColor.needsUpdate = true;
+    data.forEach(d => {
+      if (!visibleTypes.includes(d.rawAddress.ESP)) return;
 
-        let beamIdx = 0; let upIdx = 0; const depthHalf = DIMENSIONS.RACK_DEPTH / 2; const bayHalf = DIMENSIONS.BAY_WIDTH / 2;
-        columns.forEach((col) => {
-            const height = col.maxLevel * DIMENSIONS.RACK_HEIGHT;
-            const isTunnel = col.minLevel > 1;
-            const startY = isTunnel ? (col.minLevel - 1) * DIMENSIONS.RACK_HEIGHT : 0;
-            const effectiveHeight = height - startY;
-            const uprightZLocs = [col.z - bayHalf, col.z + bayHalf];
-            uprightZLocs.forEach(zLoc => {
-                dummy.rotation.set(0, 0, 0);
-                dummy.position.set(col.x - depthHalf, startY + effectiveHeight / 2, zLoc);
-                dummy.scale.set(1, effectiveHeight, 1); 
-                dummy.updateMatrix();
-                meshRefUprights.current!.setMatrixAt(upIdx, dummy.matrix);
-                if (startY === 0) {
-                    dummy.position.set(col.x - depthHalf, 0.1, zLoc);
-                    dummy.scale.set(1, 1, 1);
-                    dummy.updateMatrix();
-                    meshRefUprightBases.current!.setMatrixAt(upIdx, dummy.matrix);
-                } else {
-                    dummy.scale.set(0,0,0);
-                    dummy.updateMatrix();
-                    meshRefUprightBases.current!.setMatrixAt(upIdx, dummy.matrix);
-                }
-                upIdx++;
-                dummy.position.set(col.x + depthHalf, startY + effectiveHeight / 2, zLoc);
-                dummy.scale.set(1, effectiveHeight, 1); 
-                dummy.updateMatrix();
-                meshRefUprights.current!.setMatrixAt(upIdx, dummy.matrix);
-                if (startY === 0) {
-                    dummy.position.set(col.x + depthHalf, 0.1, zLoc);
-                    dummy.scale.set(1, 1, 1);
-                    dummy.updateMatrix();
-                    meshRefUprightBases.current!.setMatrixAt(upIdx, dummy.matrix);
-                } else {
-                    dummy.scale.set(0,0,0);
-                    dummy.updateMatrix();
-                    meshRefUprightBases.current!.setMatrixAt(upIdx, dummy.matrix);
-                }
-                upIdx++;
-            });
-            for (let level = 1; level <= col.maxLevel; level++) {
-                if (level < col.minLevel) continue;
-                if (col.blockedLevels && col.blockedLevels.has(level)) continue;
-                const yLevel = (level - 1) * DIMENSIONS.RACK_HEIGHT;
-                dummy.position.set(col.x - depthHalf, yLevel, col.z); 
-                dummy.rotation.set(0, 0, 0); 
-                dummy.rotation.set(0, Math.PI/2, 0); 
-                dummy.scale.set(1, 1, 1);
-                dummy.updateMatrix();
-                meshRefBeams.current!.setMatrixAt(beamIdx++, dummy.matrix);
-                dummy.position.set(col.x + depthHalf, yLevel, col.z);
-                dummy.updateMatrix();
-                meshRefBeams.current!.setMatrixAt(beamIdx++, dummy.matrix);
-            }
-        });
-        for(let i=0; i<upIdx; i++) {
-            meshRefUprights.current!.setColorAt(i, color.set(COLORS.RACK_UPRIGHT));
-            meshRefUprightBases.current!.setColorAt(i, color.set(COLORS.RACK_BASE));
+      const stackKey = `${d.rawAddress.RUA}-${d.rawAddress.PRED}-${d.rawAddress.SL}`;
+      if (!stackMap.has(stackKey)) stackMap.set(stackKey, []);
+      stackMap.get(stackKey)!.push(d);
+
+      const bayKey = `${d.rawAddress.RUA}-${d.rawAddress.PRED}`;
+      const visualLevel = Math.round(d.y / DIMENSIONS.RACK_HEIGHT) + 1;
+
+      if (!bayMap.has(bayKey)) {
+        const predIdx = extractNumber(d.rawAddress.PRED);
+        const seq = Math.floor((predIdx - 1) / 2);
+        const bayZ = -(seq * DIMENSIONS.BAY_WIDTH);
+        bayMap.set(bayKey, { x: d.x, z: bayZ, maxLevel: visualLevel, minLevel: visualLevel, blockedLevels: new Set() });
+      } else {
+        const existing = bayMap.get(bayKey)!;
+        if (visualLevel > existing.maxLevel) existing.maxLevel = visualLevel;
+        if (visualLevel < existing.minLevel) existing.minLevel = visualLevel;
+      }
+    });
+
+    const itemMetaMap = new Map<string, ItemMetadata>();
+
+    stackMap.forEach((items, key) => {
+      items.sort((a, b) => a.y - b.y);
+
+      for (let i = 0; i < items.length; i++) {
+        const current = items[i];
+        const currentLevel = Math.round(current.y / DIMENSIONS.RACK_HEIGHT) + 1;
+        let span = 1;
+
+        if (current.rawAddress.ESP === 'A') {
+          const next = items[i+1];
+          if (next) {
+            const nextLevel = Math.round(next.y / DIMENSIONS.RACK_HEIGHT) + 1;
+            span = nextLevel - currentLevel;
+          } else {
+            span = 1; 
+          }
         }
-        meshRefUprights.current.instanceMatrix.needsUpdate = true;
-        meshRefUprights.current.instanceColor!.needsUpdate = true;
-        meshRefUprightBases.current.instanceMatrix.needsUpdate = true;
-        meshRefUprightBases.current.instanceColor!.needsUpdate = true;
-        for (let i = 0; i < beamIdx; i++) meshRefBeams.current!.setColorAt(i, color.set(COLORS.RACK_BEAM));
-        meshRefBeams.current.count = beamIdx;
-        meshRefBeams.current.instanceMatrix.needsUpdate = true;
-        meshRefBeams.current.instanceColor!.needsUpdate = true;
-    }, [data, visibleStatus, visibleTypes, visibleItemIds, selectedId, hoveredInstance, columns, itemMeta, colorMode]);
+        if (span < 1) span = 1;
+        itemMetaMap.set(current.id, { span });
 
-    return (
-        <group>
-        <instancedMesh ref={meshRefBoxes} args={[boxStackGeometry, undefined, data.length]} onPointerMove={(e) => {e.stopPropagation(); setHoveredInstance(e.instanceId !== undefined ? e.instanceId : null);}} onPointerOut={() => setHoveredInstance(null)} onClick={(e) => {e.stopPropagation(); if (e.instanceId !== undefined && data[e.instanceId]) onSelect(data[e.instanceId]);}}>
-            <meshStandardMaterial roughness={0.9} />
-        </instancedMesh>
-        <instancedMesh ref={meshRefPallets} args={[detailedPalletGeometry, undefined, data.length]}>
-            <meshStandardMaterial color={COLORS.PALLET_BLUE} roughness={0.5} />
-        </instancedMesh>
-        <instancedMesh ref={meshRefUprights} args={[uprightPostGeometry, undefined, uprightInstances]}>
-            <meshStandardMaterial color={COLORS.RACK_UPRIGHT} roughness={0.3} metalness={0.4} />
-        </instancedMesh>
-        <instancedMesh ref={meshRefUprightBases} args={[uprightBaseGeometry, undefined, uprightInstances]}>
-            <meshStandardMaterial color={COLORS.RACK_BASE} roughness={0.5} />
-        </instancedMesh>
-        <instancedMesh ref={meshRefBeams} args={[beamGeometry, undefined, maxBeams]}>
-            <meshStandardMaterial color={COLORS.RACK_BEAM} roughness={0.4} />
-        </instancedMesh>
-        {hoveredInstance !== null && data[hoveredInstance] && visibleStatus.includes(data[hoveredInstance].rawAddress.STATUS) && visibleTypes.includes(data[hoveredInstance].rawAddress.ESP) && visibleItemIds && visibleItemIds.has(data[hoveredInstance].id) && (
-            <Html position={[data[hoveredInstance].x, data[hoveredInstance].y + 1, data[hoveredInstance].z]} distanceFactor={15}>
-                <div className="bg-slate-900/95 text-white text-xs p-3 rounded border border-blue-500 shadow-xl pointer-events-none whitespace-nowrap z-50 min-w-[200px]">
-                <div className="font-bold text-orange-400 text-sm mb-1 border-b border-slate-700 pb-1">
-                    {data[hoveredInstance].rawAddress.RUA} - {data[hoveredInstance].rawAddress.PRED} - {data[hoveredInstance].rawAddress.AP} - {data[hoveredInstance].rawAddress.SL}
-                </div>
-                {itemMeta.get(data[hoveredInstance].id)?.span > 1 && (
-                    <div className="text-green-400 text-[10px] mb-2 italic font-bold">Pallet Full</div>
-                )}
-                {data[hoveredInstance].rawItem && (
-                    <div className="mb-2">
-                        <div className="text-[10px] text-blue-400 font-bold uppercase">Apanha</div>
-                        <div className="font-semibold">{data[hoveredInstance].rawItem.DESCRICAO}</div>
-                        <div className="text-slate-400 text-[10px]">Cód: {data[hoveredInstance].rawItem.CODIGO}</div>
-                    </div>
-                )}
-                {data[hoveredInstance].pulmaoItem && (
-                    <div>
-                        <div className="text-[10px] text-purple-400 font-bold uppercase">Pulmão</div>
-                        <div className="font-semibold">{data[hoveredInstance].pulmaoItem.DESCRICAO}</div>
-                        <div className="text-slate-400 text-[10px]">Cód: {data[hoveredInstance].pulmaoItem.CODIGO}</div>
-                    </div>
-                )}
-                {!data[hoveredInstance].rawItem && !data[hoveredInstance].pulmaoItem && (
-                    <div className="text-slate-500 italic">Posição Vazia</div>
-                )}
-                </div>
-            </Html>
-        )}
-        </group>
-    );
+        if (span > 1) {
+             const bayKey = `${current.rawAddress.RUA}-${current.rawAddress.PRED}`;
+             if (bayMap.has(bayKey)) {
+                for (let k = 1; k < span; k++) {
+                    bayMap.get(bayKey)!.blockedLevels.add(currentLevel + k);
+                }
+             }
+        }
+      }
+    });
+
+    const cols = Array.from(bayMap.entries()).map(([key, val]) => ({
+        ...val,
+        key
+    }));
+
+    let totalLevels = 0;
+    cols.forEach(c => totalLevels += c.maxLevel);
+
+    return { 
+      columns: cols, 
+      itemMeta: itemMetaMap,
+      maxBeams: totalLevels * 2, 
+      uprightInstances: cols.length * 4
+    };
+  }, [data, visibleTypes]);
+
+  useLayoutEffect(() => {
+    if (!meshRefBoxes.current || !meshRefUprights.current || !meshRefUprightBases.current || !meshRefBeams.current || !meshRefPallets.current) return;
+
+    const dummy = new THREE.Object3D();
+    const color = new THREE.Color();
+    const cardColors = [new THREE.Color(COLORS.BOX_CARDBOARD), new THREE.Color(COLORS.BOX_CARDBOARD_DARK), new THREE.Color('#d4b48d')];
+
+    data.forEach((item, i) => {
+      const isVisibleStatus = visibleStatus.includes(item.rawAddress.STATUS);
+      const isVisibleType = visibleTypes.includes(item.rawAddress.ESP);
+      const isVisibleSearchAndExpiry = visibleItemIds && visibleItemIds.has(item.id);
+      
+      const isVisible = isVisibleStatus && isVisibleType && isVisibleSearchAndExpiry;
+
+      const span = itemMeta.get(item.id)?.span || 1;
+      const yBase = item.y;
+      
+      if (isVisible) {
+          // 1. Pallet
+          dummy.position.set(item.x, yBase, item.z);
+          dummy.rotation.set(0, 0, 0);
+          dummy.scale.set(1, 1, 1);
+          dummy.updateMatrix();
+          meshRefPallets.current!.setMatrixAt(i, dummy.matrix);
+          meshRefPallets.current!.setColorAt(i, color.set(COLORS.PALLET_BLUE));
+
+          // 2. Box Stack
+          const totalHeightAvailable = (span * DIMENSIONS.RACK_HEIGHT) - DIMENSIONS.PALLET_HEIGHT - 0.2;
+          const boxY = yBase + DIMENSIONS.PALLET_HEIGHT; 
+          dummy.position.set(item.x, boxY, item.z);
+          const scaleY = totalHeightAvailable / 1.0; 
+          dummy.scale.set(1, scaleY, 1);
+          dummy.updateMatrix();
+          meshRefBoxes.current!.setMatrixAt(i, dummy.matrix);
+
+          if (item.id === selectedId) {
+            color.set(COLORS.SELECTED);
+          } else if (i === hoveredInstance) {
+            color.set(COLORS.HOVER);
+          } else if (colorMode === 'STATUS') {
+            color.set(COLORS[item.rawAddress.STATUS] || COLORS.DEFAULT);
+          } else {
+            const charCode = item.id.charCodeAt(item.id.length - 1);
+            color.set(cardColors[charCode % 3]);
+          }
+          meshRefBoxes.current!.setColorAt(i, color);
+
+      } else {
+          dummy.scale.set(0, 0, 0);
+          dummy.updateMatrix();
+          meshRefBoxes.current!.setMatrixAt(i, dummy.matrix);
+          meshRefPallets.current!.setMatrixAt(i, dummy.matrix);
+      }
+    });
+    
+    meshRefBoxes.current.instanceMatrix.needsUpdate = true;
+    if (meshRefBoxes.current.instanceColor) meshRefBoxes.current.instanceColor.needsUpdate = true;
+    meshRefPallets.current.instanceMatrix.needsUpdate = true;
+    if (meshRefPallets.current.instanceColor) meshRefPallets.current.instanceColor.needsUpdate = true;
+
+
+    // --- Structure Generation ---
+    let beamIdx = 0;
+    let upIdx = 0;
+    const depthHalf = DIMENSIONS.RACK_DEPTH / 2;
+    const bayHalf = DIMENSIONS.BAY_WIDTH / 2;
+
+    columns.forEach((col) => {
+       const height = col.maxLevel * DIMENSIONS.RACK_HEIGHT;
+       const isTunnel = col.minLevel > 1;
+       const startY = isTunnel ? (col.minLevel - 1) * DIMENSIONS.RACK_HEIGHT : 0;
+       const effectiveHeight = height - startY;
+       const uprightZLocs = [col.z - bayHalf, col.z + bayHalf];
+
+       uprightZLocs.forEach(zLoc => {
+          dummy.rotation.set(0, 0, 0);
+          dummy.position.set(col.x - depthHalf, startY + effectiveHeight / 2, zLoc);
+          dummy.scale.set(1, effectiveHeight, 1); 
+          dummy.updateMatrix();
+          meshRefUprights.current!.setMatrixAt(upIdx, dummy.matrix);
+          
+          if (startY === 0) {
+             dummy.position.set(col.x - depthHalf, 0.1, zLoc);
+             dummy.scale.set(1, 1, 1);
+             dummy.updateMatrix();
+             meshRefUprightBases.current!.setMatrixAt(upIdx, dummy.matrix);
+          } else {
+             dummy.scale.set(0,0,0);
+             dummy.updateMatrix();
+             meshRefUprightBases.current!.setMatrixAt(upIdx, dummy.matrix);
+          }
+          upIdx++;
+
+          dummy.position.set(col.x + depthHalf, startY + effectiveHeight / 2, zLoc);
+          dummy.scale.set(1, effectiveHeight, 1); 
+          dummy.updateMatrix();
+          meshRefUprights.current!.setMatrixAt(upIdx, dummy.matrix);
+
+          if (startY === 0) {
+             dummy.position.set(col.x + depthHalf, 0.1, zLoc);
+             dummy.scale.set(1, 1, 1);
+             dummy.updateMatrix();
+             meshRefUprightBases.current!.setMatrixAt(upIdx, dummy.matrix);
+          } else {
+             dummy.scale.set(0,0,0);
+             dummy.updateMatrix();
+             meshRefUprightBases.current!.setMatrixAt(upIdx, dummy.matrix);
+          }
+          upIdx++;
+       });
+
+       for (let level = 1; level <= col.maxLevel; level++) {
+             if (level < col.minLevel) continue;
+             if (col.blockedLevels && col.blockedLevels.has(level)) continue;
+             const yLevel = (level - 1) * DIMENSIONS.RACK_HEIGHT;
+             dummy.position.set(col.x - depthHalf, yLevel, col.z); 
+             dummy.rotation.set(0, 0, 0); 
+             dummy.rotation.set(0, Math.PI/2, 0); 
+             dummy.scale.set(1, 1, 1);
+             dummy.updateMatrix();
+             meshRefBeams.current!.setMatrixAt(beamIdx++, dummy.matrix);
+             dummy.position.set(col.x + depthHalf, yLevel, col.z);
+             dummy.updateMatrix();
+             meshRefBeams.current!.setMatrixAt(beamIdx++, dummy.matrix);
+        }
+    });
+    
+    for(let i=0; i<upIdx; i++) {
+        meshRefUprights.current!.setColorAt(i, color.set(COLORS.RACK_UPRIGHT));
+        meshRefUprightBases.current!.setColorAt(i, color.set(COLORS.RACK_BASE));
+    }
+    meshRefUprights.current.instanceMatrix.needsUpdate = true;
+    meshRefUprights.current.instanceColor!.needsUpdate = true;
+    meshRefUprightBases.current.instanceMatrix.needsUpdate = true;
+    meshRefUprightBases.current.instanceColor!.needsUpdate = true;
+
+    for (let i = 0; i < beamIdx; i++) meshRefBeams.current!.setColorAt(i, color.set(COLORS.RACK_BEAM));
+    meshRefBeams.current.count = beamIdx;
+    meshRefBeams.current.instanceMatrix.needsUpdate = true;
+    meshRefBeams.current.instanceColor!.needsUpdate = true;
+
+  }, [data, visibleStatus, visibleTypes, visibleItemIds, selectedId, hoveredInstance, columns, itemMeta, colorMode]);
+
+  return (
+    <group>
+      <instancedMesh ref={meshRefBoxes} args={[boxStackGeometry, undefined, data.length]} onPointerMove={(e) => {e.stopPropagation(); setHoveredInstance(e.instanceId !== undefined ? e.instanceId : null);}} onPointerOut={() => setHoveredInstance(null)} onClick={(e) => {e.stopPropagation(); if (e.instanceId !== undefined && data[e.instanceId]) onSelect(data[e.instanceId]);}}>
+        <meshStandardMaterial roughness={0.9} />
+      </instancedMesh>
+      <instancedMesh ref={meshRefPallets} args={[detailedPalletGeometry, undefined, data.length]}>
+        <meshStandardMaterial color={COLORS.PALLET_BLUE} roughness={0.5} />
+      </instancedMesh>
+      <instancedMesh ref={meshRefUprights} args={[uprightPostGeometry, undefined, uprightInstances]}>
+        <meshStandardMaterial color={COLORS.RACK_UPRIGHT} roughness={0.3} metalness={0.4} />
+      </instancedMesh>
+      <instancedMesh ref={meshRefUprightBases} args={[uprightBaseGeometry, undefined, uprightInstances]}>
+        <meshStandardMaterial color={COLORS.RACK_BASE} roughness={0.5} />
+      </instancedMesh>
+      <instancedMesh ref={meshRefBeams} args={[beamGeometry, undefined, maxBeams]}>
+        <meshStandardMaterial color={COLORS.RACK_BEAM} roughness={0.4} />
+      </instancedMesh>
+
+      {hoveredInstance !== null && data[hoveredInstance] && visibleStatus.includes(data[hoveredInstance].rawAddress.STATUS) && visibleTypes.includes(data[hoveredInstance].rawAddress.ESP) && visibleItemIds && visibleItemIds.has(data[hoveredInstance].id) && (
+         <Html position={[data[hoveredInstance].x, data[hoveredInstance].y + 1, data[hoveredInstance].z]} distanceFactor={15}>
+            <div className="bg-slate-900/95 text-white text-xs p-3 rounded border border-blue-500 shadow-xl pointer-events-none whitespace-nowrap z-50 min-w-[200px]">
+               <div className="font-bold text-orange-400 text-sm mb-1 border-b border-slate-700 pb-1">
+                  {data[hoveredInstance].rawAddress.RUA} - {data[hoveredInstance].rawAddress.PRED} - {data[hoveredInstance].rawAddress.AP} - {data[hoveredInstance].rawAddress.SL}
+               </div>
+               
+               {itemMeta.get(data[hoveredInstance].id)?.span > 1 && (
+                 <div className="text-green-400 text-[10px] mb-2 italic font-bold">Pallet Full</div>
+               )}
+
+               {/* Show details for Picking Stock if exists */}
+               {data[hoveredInstance].rawItem && (
+                   <div className="mb-2">
+                       <div className="text-[10px] text-blue-400 font-bold uppercase">Apanha</div>
+                       <div className="font-semibold">{data[hoveredInstance].rawItem.DESCRICAO}</div>
+                       <div className="text-slate-400 text-[10px]">Cód: {data[hoveredInstance].rawItem.CODIGO}</div>
+                   </div>
+               )}
+
+               {/* Show details for Buffer Stock if exists */}
+               {data[hoveredInstance].pulmaoItem && (
+                   <div>
+                       <div className="text-[10px] text-purple-400 font-bold uppercase">Pulmão</div>
+                       <div className="font-semibold">{data[hoveredInstance].pulmaoItem.DESCRICAO}</div>
+                       <div className="text-slate-400 text-[10px]">Cód: {data[hoveredInstance].pulmaoItem.CODIGO}</div>
+                   </div>
+               )}
+
+               {/* Fallback if empty */}
+               {!data[hoveredInstance].rawItem && !data[hoveredInstance].pulmaoItem && (
+                   <div className="text-slate-500 italic">Posição Vazia</div>
+               )}
+            </div>
+         </Html>
+      )}
+    </group>
+  );
 };
 
 function WalkController({ teleportPos, isMobileOpen }: { teleportPos: {x:number, y:number, z:number}|null, isMobileOpen: boolean }) {
@@ -424,11 +506,13 @@ function WalkController({ teleportPos, isMobileOpen }: { teleportPos: {x:number,
   const { camera } = useThree();
   const speed = 10; 
   
+  // UseEffect para teleporte inicial (set)
   useEffect(() => {
     if (teleportPos) {
-       // [AJUSTE IMPORTANTE] Garantir Y=1.7 para não voar, exceto se for teleport para item (mas aqui forçamos chão)
-       camera.position.set(teleportPos.x, 1.7, teleportPos.z + 5); 
-       camera.lookAt(teleportPos.x, 1.7, teleportPos.z);
+       // Usa a posição exata recebida, que já deve estar correta (ex: chão + altura do olho)
+       camera.position.set(teleportPos.x, teleportPos.y, teleportPos.z); 
+       // Olha para "frente" da posição (assumindo eixo Z negativo como frente do rack)
+       camera.lookAt(teleportPos.x, teleportPos.y, teleportPos.z - 5);
     }
   }, [teleportPos, camera]);
 
@@ -450,30 +534,17 @@ function WalkController({ teleportPos, isMobileOpen }: { teleportPos: {x:number,
 
     direction.y = 0;
     camera.position.add(direction);
-    camera.position.y = 1.7; 
+    camera.position.y = 1.7; // Força altura do "olho"
   });
 
   return null;
-}
-
-interface SceneProps {
-    data: MergedData[];
-    visibleStatus: string[]; 
-    visibleTypes: string[]; 
-    visibleItemIds: Set<string>;
-    mode: 'WALK' | 'ORBIT';
-    onSelect: (data: MergedData) => void;
-    selectedId: string | null;
-    teleportPos: { x: number, y: number, z: number } | null;
-    isMobileOpen: boolean;
-    colorMode: 'REALISTIC' | 'STATUS';
 }
 
 export const Scene3D: React.FC<SceneProps> = ({ data, visibleStatus, visibleTypes, visibleItemIds, mode, onSelect, selectedId, teleportPos, isMobileOpen, colorMode }) => {
   return (
     <div id="canvas-container" className="w-full h-full bg-[#0f172a] relative">
       
-      {/* [NOVO] Crosshair / Ponto de Mira (Só aparece no modo WALK) */}
+      {/* Mira (Crosshair) apenas no modo WALK */}
       {mode === 'WALK' && !isMobileOpen && (
           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-1.5 h-1.5 bg-white/50 rounded-full z-10 pointer-events-none shadow-[0_0_2px_rgba(255,255,255,0.8)]" />
       )}
