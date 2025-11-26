@@ -6,9 +6,7 @@ import { Handheld } from './components/Handheld';
 import { processData, parseCSV } from './utils/dataProcessor';
 import { MergedData, ViewMode, FilterState, RawAddressRow, RawItemRow, AddressStatus, ReceiptFilterType } from './types';
 import { Upload, AlertTriangle } from 'lucide-react';
-import { DIMENSIONS } from './constants'; // Importando para cálculos de posição
 
-// Helper to parse DD/MM/YYYY to Date object
 const parseDatePTBR = (dateStr: string): Date | null => {
   if (!dateStr) return null;
   const parts = dateStr.split('/');
@@ -38,7 +36,6 @@ export default function App() {
   
   const [files, setFiles] = useState<{ structure?: File, items?: File, pulmao?: File }>({});
 
-  // Filters
   const [filters, setFilters] = useState<FilterState>({
     status: [AddressStatus.Occupied, AddressStatus.Available, AddressStatus.Reserved, AddressStatus.Blocked],
     type: ['A', 'P'],
@@ -49,7 +46,6 @@ export default function App() {
     sector: [] 
   });
 
-  // Extrair setores únicos dos dados
   const availableSectors = useMemo(() => {
      const sectors = new Set<string>();
      data.forEach(d => {
@@ -58,28 +54,23 @@ export default function App() {
      return Array.from(sectors).sort();
   }, [data]);
 
-  // Popula o filtro de setores quando os dados carregam
   useEffect(() => {
      if (availableSectors.length > 0) {
          setFilters(prev => ({ ...prev, sector: availableSectors }));
      }
   }, [availableSectors]);
 
-  // [NOVO] Efeito para movimentar a câmera quando o filtro de setor muda
+  // Efeito de Teleporte Automático ao filtrar Setor
   useEffect(() => {
-      // Só executa se tiver dados, se o filtro de setor não for vazio e não for "todos" (opcional, aqui move sempre que filtra específico)
       const isFilteringSpecific = filters.sector.length > 0 && filters.sector.length < availableSectors.length;
       
       if (isFilteringSpecific && data.length > 0) {
-          // Encontrar o primeiro item que pertence a um dos setores filtrados
-          // A lógica aqui busca o item com maior Z (início da rua) desse setor
           let targetX = 0;
           let targetZ = -Infinity;
           let found = false;
 
           for (const d of data) {
               if (filters.sector.includes(d.sector)) {
-                  // Preferência: Pegar um item próximo ao início da rua (Z maior)
                   if (d.z > targetZ) {
                       targetZ = d.z;
                       targetX = d.x;
@@ -89,14 +80,11 @@ export default function App() {
           }
 
           if (found) {
-              // Move a câmera para a frente do setor encontrado
               handleTeleport(targetX, 1.7, targetZ + 5);
           }
       }
   }, [filters.sector, data, availableSectors.length]);
 
-
-  // Calculate visible items
   const visibleItemIds = useMemo(() => {
     const ids = new Set<string>();
     const searchLower = filters.search.toLowerCase();
@@ -249,9 +237,13 @@ export default function App() {
     data.find(d => d.id === selectedId) || null, 
   [selectedId, data]);
 
+  // [CORREÇÃO] Lógica de Toggle (Selecionar/Desselecionar)
+  const handleSelect = (item: MergedData) => {
+    setSelectedId(prevId => prevId === item.id ? null : item.id);
+  };
+
   const handleTeleport = (x: number, y: number, z: number) => {
     setTeleportPos({ x, y, z });
-    // Pequeno delay para resetar o estado e permitir novos teleportes para o mesmo lugar se necessário
     setTimeout(() => setTeleportPos(null), 100);
   };
 
@@ -312,6 +304,8 @@ export default function App() {
         colorMode={colorMode}
         setColorMode={setColorMode}
         availableSectors={availableSectors}
+        // [NOVO] Passamos a função de fechar detalhe para a Sidebar (se necessário)
+        onCloseDetail={() => setSelectedId(null)}
       />
       
       <main className="flex-1 relative h-full">
@@ -322,7 +316,7 @@ export default function App() {
              visibleTypes={filters.type} 
              visibleItemIds={visibleItemIds}
              mode={viewMode === '3D_WALK' ? 'WALK' : 'ORBIT'} 
-             onSelect={(item) => setSelectedId(item.id)}
+             onSelect={handleSelect} // Usa a nova lógica de toggle
              selectedId={selectedId}
              teleportPos={teleportPos}
              isMobileOpen={isMobileOpen}
@@ -331,7 +325,7 @@ export default function App() {
         ) : (
            <Scene2D 
              data={filteredDataFor2D}
-             onSelect={(item) => setSelectedId(item.id)}
+             onSelect={handleSelect} // Usa a nova lógica de toggle
              selectedId={selectedId}
            />
         )}
@@ -340,7 +334,7 @@ export default function App() {
            <Handheld 
              data={data} 
              onTeleport={handleTeleport}
-             onSelect={(item) => setSelectedId(item.id)}
+             onSelect={handleSelect} // Usa a nova lógica de toggle
              isOpen={isMobileOpen}
              setIsOpen={setIsMobileOpen}
            />
