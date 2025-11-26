@@ -59,7 +59,7 @@ const ItemDetail = ({ label, item }: { label: string, item: any }) => {
                 <div className="grid grid-cols-2 gap-2 bg-slate-900/50 p-2 rounded text-xs">
                     <div>
                         <span className="text-slate-500 block text-[9px] uppercase">Estoque</span>
-                        {/* ALTERAÇÃO AQUI: INVERTIDO CX COM UN */}
+                        {/* Mantendo a inversão: CX em destaque, UN entre parênteses */}
                         <span className="text-cyan-400 font-bold">{boxes} cx</span>
                         <span className="text-slate-400 ml-1">({qty} un)</span>
                     </div>
@@ -97,14 +97,29 @@ export const Sidebar: React.FC<SidebarProps> = ({
     });
   };
 
-  // ALTERAÇÃO: Lógica para seleção única de setor
+  // LÓGICA INTELIGENTE DE SELEÇÃO DE SETOR
   const handleSectorClick = (sector: string | 'ALL') => {
     if (sector === 'ALL') {
-        // Seleciona todos os setores disponíveis
+        // Seleciona TODOS
         setFilters(prev => ({ ...prev, sector: availableSectors }));
     } else {
-        // Seleciona APENAS o setor clicado
-        setFilters(prev => ({ ...prev, sector: [sector] }));
+        setFilters(prev => {
+            // Verifica se TODOS estão selecionados atualmente
+            const isAllSelected = prev.sector.length === availableSectors.length;
+            
+            // Se eu clicar em um setor e TODOS estiverem ativos -> Foca APENAS naquele (Seleção Única Rápida)
+            if (isAllSelected) {
+                return { ...prev, sector: [sector] };
+            }
+
+            // Se eu já estiver filtrando (não são todos), funciona como Toggle (Adiciona/Remove)
+            // Isso permite selecionar 2, 3 ou mais setores manualmente.
+            if (prev.sector.includes(sector)) {
+                return { ...prev, sector: prev.sector.filter(s => s !== sector) };
+            } else {
+                return { ...prev, sector: [...prev.sector, sector] };
+            }
+        });
     }
   };
 
@@ -121,7 +136,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
       return Math.round((val / total) * 100);
   };
 
-  // Verifica se todos os setores estão selecionados para destacar o botão "TODOS"
   const isAllSectorsSelected = availableSectors.length > 0 && filters.sector.length === availableSectors.length;
 
   return (
@@ -209,12 +223,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
              <input type="text" placeholder="Buscar Código, Descrição..." value={filters.search} onChange={(e) => setFilters(prev => ({...prev, search: e.target.value}))} className="w-full bg-slate-900 border border-slate-700 rounded-lg pl-9 pr-3 py-2 text-xs text-white focus:border-cyan-500 focus:outline-none transition-all placeholder:text-slate-600 shadow-inner" />
            </div>
 
-            {/* Filtro de Setores Ajustado */}
             {availableSectors.length > 0 && (
                 <div className="mb-4">
                      <label className="text-[10px] uppercase font-bold text-slate-500 mb-2 flex items-center gap-2"><Tag size={12} /> Setores</label>
                      <div className="flex flex-wrap gap-1">
-                        {/* Botão TODOS */}
                         <button 
                             onClick={() => handleSectorClick('ALL')} 
                             className={clsx(
@@ -225,9 +237,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                             TODOS
                         </button>
                         
-                        {/* Botões Individuais */}
                         {availableSectors.map(sec => {
-                            // Está ativo se não estamos vendo TODOS e este setor está no filtro
                             const isActive = !isAllSectorsSelected && filters.sector.includes(sec);
                             return (
                                 <button 
