@@ -137,14 +137,18 @@ const beamGeometry = new THREE.BoxGeometry(DIMENSIONS.BAY_WIDTH, DIMENSIONS.BEAM
 
 const StreetLabels = ({ data }: { data: MergedData[] }) => {
   const streets = useMemo(() => {
-    const map = new Map<string, { minZ: number, x: number }>();
+    // ALTERAÇÃO 1: Usar maxZ (início) em vez de minZ (fim)
+    const map = new Map<string, { maxZ: number, x: number }>();
+    
     data.forEach(d => {
       const rua = d.rawAddress.RUA;
       if (!map.has(rua)) {
-        map.set(rua, { minZ: d.z, x: 0 }); 
+        // Inicializa com o Z atual
+        map.set(rua, { maxZ: d.z, x: 0 }); 
       } else {
         const entry = map.get(rua)!;
-        entry.minZ = Math.min(entry.minZ, d.z);
+        // Pega o MAIOR valor de Z (o mais próximo de zero/positivo é o início da rua)
+        entry.maxZ = Math.max(entry.maxZ, d.z);
       }
     });
 
@@ -154,7 +158,9 @@ const StreetLabels = ({ data }: { data: MergedData[] }) => {
         return {
             name,
             x: centerX,
-            z: val.minZ - 3
+            // ALTERAÇÃO 2: Posicionar um pouco À FRENTE do início (positivo)
+            // Antes era 'minZ - 3' (fundo), agora é 'maxZ + 4' (frente)
+            z: val.maxZ + 4 
         };
     });
   }, [data]);
@@ -163,17 +169,21 @@ const StreetLabels = ({ data }: { data: MergedData[] }) => {
     <group>
       {streets.map((s) => (
         <group key={s.name} position={[s.x, 6, s.z]}>
+           {/* Haste da placa */}
            <mesh position={[0, 1, 0]}>
              <cylinderGeometry args={[0.05, 0.05, 3]} />
              <meshStandardMaterial color="#334155" />
            </mesh>
+           {/* Placa */}
            <mesh position={[0, 0, 0]}>
              <boxGeometry args={[3, 1, 0.1]} />
              <meshStandardMaterial color="#0f172a" />
            </mesh>
+           {/* Texto Frente */}
            <Text position={[0, 0, 0.06]} fontSize={0.6} color="#06b6d4" anchorX="center" anchorY="middle">
              {s.name}
            </Text>
+           {/* Texto Verso (Rotacionado) */}
            <Text position={[0, 0, -0.06]} rotation={[0, Math.PI, 0]} fontSize={0.6} color="#06b6d4" anchorX="center" anchorY="middle">
              {s.name}
            </Text>
