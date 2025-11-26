@@ -7,7 +7,7 @@ import { processData, parseCSV } from './utils/dataProcessor';
 import { MergedData, ViewMode, FilterState, RawAddressRow, RawItemRow, AddressStatus, ReceiptFilterType } from './types';
 import { Upload, AlertTriangle } from 'lucide-react';
 
-// Helper to parse DD/MM/YYYY to Date object
+// ... (helpers parseDatePTBR e isSameDay mantêm-se iguais) ...
 const parseDatePTBR = (dateStr: string): Date | null => {
   if (!dateStr) return null;
   const parts = dateStr.split('/');
@@ -44,8 +44,25 @@ export default function App() {
     search: '',
     expiryDays: null,
     receiptType: 'ALL',
-    receiptDate: new Date().toISOString().split('T')[0] 
+    receiptDate: new Date().toISOString().split('T')[0],
+    sector: [] // [NOVO] Inicialmente vazio (será populado ao carregar)
   });
+
+  // [NOVO] Extrair setores únicos dos dados
+  const availableSectors = useMemo(() => {
+     const sectors = new Set<string>();
+     data.forEach(d => {
+         if (d.sector) sectors.add(d.sector);
+     });
+     return Array.from(sectors).sort();
+  }, [data]);
+
+  // [NOVO] Popula o filtro de setores quando os dados carregam
+  useEffect(() => {
+     if (availableSectors.length > 0) {
+         setFilters(prev => ({ ...prev, sector: availableSectors }));
+     }
+  }, [availableSectors]);
 
   // Calculate visible items
   const visibleItemIds = useMemo(() => {
@@ -54,11 +71,18 @@ export default function App() {
     const hasSearch = !!searchLower;
     const hasExpiry = filters.expiryDays !== null;
     const hasReceipt = filters.receiptType !== 'ALL';
+    // [NOVO] Check se filtro de setor está ativo (se array não estiver vazio)
+    // Se estiver vazio, assume que nada está selecionado, ou podemos assumir todos.
+    // Pela lógica do useEffect acima, ele preenche com todos. Então se estiver vazio é pq o usuário desmarcou tudo.
+    const allowedSectors = new Set(filters.sector);
     
     const now = new Date();
     now.setHours(0,0,0,0);
 
     data.forEach(d => {
+       // [NOVO] Filtro de Setor
+       if (!allowedSectors.has(d.sector)) return;
+
        let matches = true;
        const relevantItem = d.rawAddress.ESP === 'P' ? d.pulmaoItem : d.rawItem;
 
@@ -74,6 +98,7 @@ export default function App() {
        }
 
        if (matches && hasExpiry) {
+           // ... (lógica de validade mantida) ...
            if (!relevantItem || !relevantItem.VALIDADE) {
                matches = false;
            } else {
@@ -89,6 +114,7 @@ export default function App() {
        }
 
        if (matches && hasReceipt) {
+           // ... (lógica de recebimento mantida) ...
            if (!relevantItem || !relevantItem.RECEBIMENTO) {
                matches = false;
            } else {
@@ -133,20 +159,19 @@ export default function App() {
        if (matches) ids.add(d.id);
     });
     return ids;
-  }, [data, filters.search, filters.expiryDays, filters.receiptType, filters.receiptDate]);
+  }, [data, filters]); // Adicionei filters como dependência geral
 
   const stats = useMemo(() => {
     const s = {
-      totalApanha: 0,
-      validApanha: 0, 
-      occupiedApanha: 0,
-      totalPulmao: 0,
-      validPulmao: 0, 
-      occupiedPulmao: 0,
+      totalApanha: 0, validApanha: 0, occupiedApanha: 0,
+      totalPulmao: 0, validPulmao: 0, occupiedPulmao: 0,
       total: 0, occupied: 0, available: 0, reserved: 0, blocked: 0 
     };
 
     data.forEach(d => {
+      // [NOVO] Considerar o setor nas estatísticas também
+      if (!filters.sector.includes(d.sector)) return;
+
       const isTypeVisible = filters.type.includes(d.rawAddress.ESP);
       const isStatusVisible = filters.status.includes(d.rawAddress.STATUS);
       const isSearchVisible = (!filters.search && filters.expiryDays === null && filters.receiptType === 'ALL') ? true : visibleItemIds.has(d.id);
@@ -159,6 +184,7 @@ export default function App() {
           if (d.rawAddress.STATUS === AddressStatus.Blocked) s.blocked++;
       }
 
+      // Estatísticas gerais (Apanha/Pulmão) - geralmente refletem o estado físico, mas vamos aplicar o filtro de setor nelas também para coerência
       if (d.rawAddress.ESP === 'A') {
           s.totalApanha++;
           if (d.rawAddress.STATUS !== AddressStatus.Blocked) s.validApanha++;
@@ -204,6 +230,7 @@ export default function App() {
     setTimeout(() => setTeleportPos(null), 100);
   };
 
+  // Componente de Upload (Mantido igual)
   if (data.length === 0) {
     return (
       <div className="w-full h-screen bg-[#0f172a] text-white flex items-center justify-center p-4">
@@ -235,7 +262,7 @@ export default function App() {
           
           <div className="mt-4 p-3 bg-cyan-900/20 border border-cyan-500/20 rounded text-cyan-400 text-xs flex gap-2">
              <AlertTriangle size={16} />
-             <span>CSV deve usar ponto e vírgula (;). Campos: CD, RUA, PRED, AP, STATUS.</span>
+             <span>CSV deve usar ponto e vírgula (;). Campos: CD, RUA, PRED, AP, STATUS, DESCRUA.</span>
           </div>
         </div>
       </div>
@@ -245,6 +272,8 @@ export default function App() {
   const filteredDataFor2D = data.filter(d => 
     filters.type.includes(d.rawAddress.ESP) && 
     filters.status.includes(d.rawAddress.STATUS) &&
+    // [NOVO] Filtro de Setor no 2D
+    filters.sector.includes(d.sector) &&
     visibleItemIds.has(d.id) 
   );
 
@@ -259,6 +288,7 @@ export default function App() {
         stats={stats}
         colorMode={colorMode}
         setColorMode={setColorMode}
+        availableSectors={availableSectors} // [NOVO] Passando os setores
       />
       
       <main className="flex-1 relative h-full">
@@ -268,6 +298,10 @@ export default function App() {
              visibleStatus={filters.status} 
              visibleTypes={filters.type} 
              visibleItemIds={visibleItemIds}
+             // [NOVO] Não preciso passar o filtro de setor explicitamente pois visibleItemIds já considera ele
+             // Mas se o Scene3D filtrar internamente, preciso garantir. 
+             // O seu Scene3D usa visibleStatus e visibleTypes e visibleItemIds. 
+             // Como meu visibleItemIds já filtrou o setor, o Scene3D vai esconder os itens corretamente.
              mode={viewMode === '3D_WALK' ? 'WALK' : 'ORBIT'} 
              onSelect={(item) => setSelectedId(item.id)}
              selectedId={selectedId}
