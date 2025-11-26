@@ -9,6 +9,15 @@ export const extractNumber = (str: string): number => {
   return match ? parseInt(match[0], 10) : 0;
 };
 
+// [NOVO] Helper para extrair o setor da descrição da rua
+// Ex: "RUA 021 MERCEARIA" -> "MERCEARIA"
+// Ex: "RUA 01 - LIQUIDA" -> "LIQUIDA"
+const extractSector = (desc: string): string => {
+  if (!desc) return 'GERAL';
+  // Remove "RUA", digitos opcionais, espaços e hifens do início
+  return desc.replace(/^RUA\s*\d+\s*[-]?\s*/i, '').trim().toUpperCase() || 'GERAL';
+};
+
 export const parseCSV = <T>(file: File): Promise<T[]> => {
   return new Promise((resolve, reject) => {
     Papa.parse(file, {
@@ -48,6 +57,9 @@ export const processData = (
     const apIdx = extractNumber(addr.AP);
     const slIdx = extractNumber(addr.SL) || 1; 
     
+    // [NOVO] Extração do Setor
+    const sector = extractSector(addr.DESCRUA || '');
+
     // 2. Status Mapping
     let status = addr.STATUS as AddressStatus;
     if (![AddressStatus.Reserved, AddressStatus.Occupied, AddressStatus.Available, AddressStatus.Blocked].includes(status)) {
@@ -69,8 +81,6 @@ export const processData = (
     const sideMultiplier = isEvenPred ? 1 : -1;
     
     // Z Axis
-    // Invert direction: Predio 1 (Start) is at 0. Higher Predios go Negative (Up/Far).
-    // This puts "Start" at the "Bottom" visually in 2D/3D default views.
     const predioSequenceIndex = Math.floor((predIdx - 1) / 2);
     const bayCenterZ = -(predioSequenceIndex * DIMENSIONS.BAY_WIDTH);
 
@@ -90,7 +100,8 @@ export const processData = (
       y,
       z,
       color: COLORS[status] || COLORS.DEFAULT,
-      isTunnel
+      isTunnel,
+      sector // [NOVO]
     };
   });
 };
