@@ -138,7 +138,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* Header with Logo */}
         <div className="p-6 border-b border-slate-800 flex items-center bg-[#0b1120]">
           {/* [CORREÇÃO] Caminho absoluto para o ícone na pasta public */}
-          <img src="/icon.png" alt="JP Logo" className="h-10 w-auto mr-3" />
+          <img src="icon.png" alt="JP Logo" className="h-10 w-auto mr-3" />
           <div>
               <h1 className="text-xl font-bold text-white leading-none tracking-tight">
               WMS <span className="text-cyan-400">3D</span>
