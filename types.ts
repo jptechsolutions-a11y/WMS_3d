@@ -22,6 +22,7 @@ export interface RawAddressRow {
   PAR_IMPAR: string;
   CODTIPENDER: string;
   TIPOENDERECO: string;
+  DESCRUA?: string; // [NOVO] Coluna adicionada
 }
 
 export interface RawItemRow {
@@ -50,6 +51,7 @@ export interface MergedData {
   
   color: string;
   isTunnel: boolean;
+  sector: string; // [NOVO] Setor extraído da DESCRUA
 }
 
 export type ViewMode = '3D_ORBIT' | '3D_WALK' | '2D_PLAN';
@@ -61,6 +63,7 @@ export interface FilterState {
   type: string[]; // A or P
   search: string;
   expiryDays: number | null; // Null = No filter, Number = Days until expiration
+  sector: string[]; // [NOVO] Filtro de setor
   
   // Receipt Filter
   receiptType: ReceiptFilterType;
