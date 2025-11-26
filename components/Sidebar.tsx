@@ -213,9 +213,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
            <div className="mb-6">
              <label className="text-[10px] uppercase font-bold text-slate-500 mb-2 flex items-center gap-2"><Truck size={12} /> Recebimento</label>
-             <div className="grid grid-cols-2 gap-1 mb-2">
+             <div className="grid grid-cols-3 gap-1 mb-2">
                 <button onClick={() => setReceipt('YESTERDAY')} className={clsx("text-[10px] p-1 rounded border transition-all", filters.receiptType === 'YESTERDAY' ? "bg-cyan-900/30 border-cyan-500 text-cyan-400" : "bg-slate-800/50 border-transparent text-slate-500")}>Ontem</button>
                 <button onClick={() => setReceipt('THIS_WEEK')} className={clsx("text-[10px] p-1 rounded border transition-all", filters.receiptType === 'THIS_WEEK' ? "bg-cyan-900/30 border-cyan-500 text-cyan-400" : "bg-slate-800/50 border-transparent text-slate-500")}>Semana</button>
+                <button onClick={() => setReceipt('THIS_MONTH')} className={clsx("text-[10px] p-1 rounded border transition-all", filters.receiptType === 'THIS_MONTH' ? "bg-cyan-900/30 border-cyan-500 text-cyan-400" : "bg-slate-800/50 border-transparent text-slate-500")}>Mês</button>
              </div>
              <div className="flex gap-2 items-center">
                 <button onClick={() => setReceipt('SPECIFIC')} className={clsx("text-[10px] px-2 py-1.5 rounded border transition-all whitespace-nowrap", filters.receiptType === 'SPECIFIC' ? "bg-cyan-900/30 border-cyan-500 text-cyan-400" : "bg-slate-800/50 border-transparent text-slate-500")}>Data:</button>
