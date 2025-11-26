@@ -1,7 +1,7 @@
 import React from 'react';
 import { MergedData, ViewMode, AddressStatus, FilterState, ReceiptFilterType } from '../types';
 import { COLORS, STATUS_LABELS } from '../constants';
-import { Settings, Eye, Map, Box, Info, Search, Layers, Palette, CalendarClock, Truck, PieChart } from 'lucide-react';
+import { Settings, Eye, Map, Box, Info, Search, Layers, Palette, CalendarClock, Truck, Tag } from 'lucide-react';
 import clsx from 'clsx';
 
 interface SidebarProps {
@@ -25,8 +25,10 @@ interface SidebarProps {
   };
   colorMode: 'REALISTIC' | 'STATUS';
   setColorMode: (m: 'REALISTIC' | 'STATUS') => void;
+  availableSectors: string[]; // [NOVO] Lista de setores únicos
 }
 
+// ... (Componentes SimplePie e ItemDetail mantêm-se iguais) ...
 const SimplePie = ({ percent, color }: { percent: number, color: string }) => {
     const circumference = 2 * Math.PI * 10; 
     const strokeDasharray = `${(percent / 100) * circumference} ${circumference}`;
@@ -43,18 +45,15 @@ const SimplePie = ({ percent, color }: { percent: number, color: string }) => {
 
 const ItemDetail = ({ label, item }: { label: string, item: any }) => {
     if (!item) return null;
-    
     const qty = parseFloat(item.ESTQ_LOCUS) || 0;
     const cpa = parseFloat(item.CPA) || 1; 
     const boxes = Math.floor(qty / cpa);
-
     return (
         <div className="mt-4 pt-4 border-t border-slate-700/50">
             <h4 className="text-[10px] font-bold uppercase text-cyan-500 mb-2 tracking-wider">{label}</h4>
             <div className="text-sm text-slate-200">
                 <div className="font-medium text-white mb-1">{item.DESCRICAO}</div>
                 <div className="text-xs text-slate-400 mb-2">Cód: <span className="text-slate-300">{item.CODIGO}</span></div>
-                
                 <div className="grid grid-cols-2 gap-2 bg-slate-900/50 p-2 rounded text-xs">
                     <div>
                         <span className="text-slate-500 block text-[9px] uppercase">Estoque</span>
@@ -76,7 +75,7 @@ const ItemDetail = ({ label, item }: { label: string, item: any }) => {
 };
 
 export const Sidebar: React.FC<SidebarProps> = ({ 
-  viewMode, setViewMode, selectedItem, filters, setFilters, stats, colorMode, setColorMode 
+  viewMode, setViewMode, selectedItem, filters, setFilters, stats, colorMode, setColorMode, availableSectors 
 }) => {
 
   const toggleStatus = (status: string) => {
@@ -92,6 +91,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
         const exists = prev.type.includes(type);
         if (exists) return { ...prev, type: prev.type.filter(t => t !== type) };
         return { ...prev, type: [...prev.type, type] };
+    });
+  };
+
+  // [NOVO] Função para alternar setores
+  const toggleSector = (sector: string) => {
+    setFilters(prev => {
+        const exists = prev.sector.includes(sector);
+        if (exists) return { ...prev, sector: prev.sector.filter(s => s !== sector) };
+        return { ...prev, sector: [...prev.sector, sector] };
     });
   };
 
@@ -111,7 +119,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   return (
     <div className="w-80 h-full bg-[#0f172a] border-r border-slate-800 flex flex-col text-slate-100 shadow-2xl z-20 font-sans">
       
-      {/* Header with Logo */}
+      {/* Header */}
       <div className="p-6 border-b border-slate-800 flex items-center bg-[#0b1120]">
         <img src="icon.png" alt="JP Logo" className="h-10 w-auto mr-3" />
         <div>
@@ -147,6 +155,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     <span className="block text-[9px] uppercase text-slate-500">Rua</span>
                     <span className="text-white font-mono">{selectedItem.rawAddress.RUA}</span>
                 </div>
+                 {/* [NOVO] Exibir setor no detalhe */}
+                 <div className="bg-slate-900/50 p-1.5 rounded col-span-2">
+                    <span className="block text-[9px] uppercase text-slate-500">Setor</span>
+                    <span className="text-white font-mono font-bold text-cyan-400">{selectedItem.sector}</span>
+                </div>
                 <div className="bg-slate-900/50 p-1.5 rounded">
                     <span className="block text-[9px] uppercase text-slate-500">Prédio</span>
                     <span className="text-white font-mono">{selectedItem.rawAddress.PRED}</span>
@@ -155,12 +168,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     <span className="block text-[9px] uppercase text-slate-500">Nível</span>
                     <span className="text-white font-mono">{selectedItem.rawAddress.AP}</span>
                 </div>
-                <div className="bg-slate-900/50 p-1.5 rounded">
+                <div className="bg-slate-900/50 p-1.5 rounded col-span-2">
                     <span className="block text-[9px] uppercase text-slate-500">Status</span>
                     <span className="text-white font-mono">{selectedItem.rawAddress.STATUS}</span>
                 </div>
               </div>
-              
               <ItemDetail label="Apanha" item={selectedItem.rawItem} />
               <ItemDetail label="Pulmão" item={selectedItem.pulmaoItem} />
            </div>
@@ -172,6 +184,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         )}
 
         <div>
+           {/* Visualização e Busca (Mantidos) */}
            <h3 className="text-[10px] font-bold uppercase text-slate-500 mb-3 tracking-wider flex items-center gap-2"><Palette size={10}/> Visualização</h3>
            <div className="grid grid-cols-2 gap-2 mb-6">
               <button onClick={() => setColorMode('REALISTIC')} className={clsx("p-2 text-[10px] font-bold uppercase rounded border transition-all flex items-center justify-center gap-2", colorMode === 'REALISTIC' ? "bg-cyan-900/40 border-cyan-500 text-cyan-400" : "bg-slate-800/40 border-transparent text-slate-500 hover:text-slate-300")}>
@@ -189,6 +202,30 @@ export const Sidebar: React.FC<SidebarProps> = ({
              <input type="text" placeholder="Buscar Código, Descrição..." value={filters.search} onChange={(e) => setFilters(prev => ({...prev, search: e.target.value}))} className="w-full bg-slate-900 border border-slate-700 rounded-lg pl-9 pr-3 py-2 text-xs text-white focus:border-cyan-500 focus:outline-none transition-all placeholder:text-slate-600 shadow-inner" />
            </div>
 
+            {/* [NOVO] Filtro de Setores */}
+            {availableSectors.length > 0 && (
+                <div className="mb-4">
+                     <label className="text-[10px] uppercase font-bold text-slate-500 mb-2 flex items-center gap-2"><Tag size={12} /> Setores</label>
+                     <div className="flex flex-wrap gap-1">
+                        {availableSectors.map(sec => {
+                            const isActive = filters.sector.includes(sec);
+                            return (
+                                <button 
+                                    key={sec} 
+                                    onClick={() => toggleSector(sec)} 
+                                    className={clsx(
+                                        "text-[9px] px-2 py-1 rounded border transition-all uppercase", 
+                                        isActive ? "bg-cyan-900/50 border-cyan-500 text-cyan-300" : "bg-slate-800/50 border-transparent text-slate-500 hover:text-slate-300"
+                                    )}
+                                >
+                                    {sec}
+                                </button>
+                            );
+                        })}
+                     </div>
+                </div>
+            )}
+
            <div className="mb-4">
              <div className="grid grid-cols-2 gap-2">
                <button onClick={() => toggleType('A')} className={clsx("flex items-center justify-center gap-2 p-2 rounded text-xs font-medium border transition-all", filters.type.includes('A') ? "bg-cyan-600 border-cyan-500 text-white shadow-lg shadow-cyan-900/20" : "bg-slate-800/50 border-transparent text-slate-500 opacity-60 hover:opacity-100")}>
@@ -200,6 +237,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
              </div>
            </div>
 
+           {/* Validade e Recebimento (Mantidos) */}
            <div className="mb-4">
              <label className="text-[10px] uppercase font-bold text-slate-500 mb-2 flex items-center gap-2"><CalendarClock size={12} /> Validade (Dias)</label>
              <div className="grid grid-cols-4 gap-1">
@@ -245,12 +283,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
              })}
            </div>
         </div>
-
       </div>
-
-      {/* Footer */}
+      {/* Footer mantido igual */}
       <div className="p-4 bg-[#0b1120] border-t border-slate-800 text-xs space-y-4 shadow-[0_-10px_40px_rgba(0,0,0,0.5)] z-30">
-         
          <div className="flex justify-around items-center">
             <div className="flex flex-col items-center gap-1">
                 <SimplePie percent={calcPercent(stats.occupiedApanha, stats.validApanha)} color="#22d3ee" />
