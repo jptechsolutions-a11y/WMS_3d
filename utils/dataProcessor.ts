@@ -2,7 +2,6 @@ import Papa from 'papaparse';
 import { RawAddressRow, RawItemRow, MergedData, AddressStatus, AnalysisRow, SuggestionMove } from '../types';
 import { COLORS, DIMENSIONS } from '../constants';
 
-// Helper to extract number from string (e.g., "RUA001" -> 1)
 export const extractNumber = (str: string): number => {
   if (!str) return 0;
   const match = str.match(/\d+/);
@@ -25,9 +24,7 @@ export const parseCSV = <T>(file: File): Promise<T[]> => {
   });
 };
 
-// [ATUALIZADO] Lógica Híbrida PQR (Visitas + Volumes)
 const calculatePQR = (analysisRows: AnalysisRow[]) => {
-  // 1. Parsear valores
   const parsedRows = analysisRows.map(row => ({
     ...row,
     visitasNum: parseInt(row.VISITAS || '0', 10),
@@ -35,12 +32,9 @@ const calculatePQR = (analysisRows: AnalysisRow[]) => {
     key: `${parseInt(row.CODRUA)}-${parseInt(row.NROPREDIO)}-${parseInt(row.NROAPARTAMENTO)}-${parseInt(row.NROSALA)}`
   }));
 
-  // 2. Encontrar máximos para normalização
   const maxVisits = Math.max(...parsedRows.map(r => r.visitasNum), 1);
   const maxVolume = Math.max(...parsedRows.map(r => r.volumeNum), 1);
 
-  // 3. Calcular Score Combinado e Ordenar
-  // Peso Sugerido: 70% Visitas (Picking Frequência) + 30% Volume (Reposição)
   const sorted = parsedRows.map(row => {
     const normVisit = row.visitasNum / maxVisits;
     const normVol = row.volumeNum / maxVolume;
@@ -61,7 +55,6 @@ const calculatePQR = (analysisRows: AnalysisRow[]) => {
     if (percentage <= 80) classification = 'P';
     else if (percentage <= 95) classification = 'Q';
     
-    // Itens sem movimento forçados para R
     if (item.score === 0) classification = 'R';
 
     pqrMap.set(item.key, {
@@ -77,75 +70,119 @@ const calculatePQR = (analysisRows: AnalysisRow[]) => {
   return pqrMap;
 };
 
-// [NOVO] Lógica de Sugestão de Reorganização
+// [ATUALIZADO] Lógica de Sugestão com Otimização de Proximidade
 const generateSuggestions = (data: MergedData[]): MergedData[] => {
-  // Agrupar endereços de APANHA por Setor
   const sectors = new Set(data.map(d => d.sector));
-  
-  // Clone para não mutar diretamente enquanto iteramos
   const newData = [...data];
   const addressMap = new Map<string, MergedData>();
   newData.forEach(d => addressMap.set(d.id, d));
 
   sectors.forEach(sector => {
-      // 1. Pegar endereços de Apanha deste setor
+      // 1. Filtrar endereços de Apanha DO SETOR
       const sectorAddresses = newData.filter(d => d.sector === sector && d.rawAddress.ESP === 'A');
       if (sectorAddresses.length === 0) return;
 
-      // 2. Classificar Endereços (Score de Ouro)
-      // Melhor endereço: Nível baixo (AP=1) e Mais perto da "frente" (Maior Z)
-      // Ajuste Z: No sistema 3D, Z cresce para a "frente" da rua (onde está o label).
-      // Score = (Z * 10) - (AP * 100). Nível pesa mais que profundidade.
+      // 2. Classificar Endereços ("Score do Slot")
+      // Prioridade: Nível Baixo (AP=1) > Frente da Rua (Maior Z)
       const rankedAddresses = [...sectorAddresses].sort((a, b) => {
-         const scoreA = (a.z * 10) - (extractNumber(a.rawAddress.AP) * 100);
-         const scoreB = (b.z * 10) - (extractNumber(b.rawAddress.AP) * 100);
-         return scoreB - scoreA; // Decrescente (Maior score é melhor)
+         const apA = extractNumber(a.rawAddress.AP);
+         const apB = extractNumber(b.rawAddress.AP);
+         if (apA !== apB) return apA - apB; // Menor nível melhor (Crescente)
+         return b.z - a.z; // Maior Z (Frente) melhor (Decrescente)
       });
 
-      // 3. Pegar Itens com PQR deste setor (que estão atualmente ocupando endereços aqui)
-      // Nota: Estamos assumindo reorganização dos itens JÁ presentes no setor.
+      // 3. Classificar Itens ("Score do Produto")
       const rankedItems = sectorAddresses
-          .filter(d => d.analysis) // Tem dados PQR
+          .filter(d => d.analysis) 
           .map(d => ({ 
               originalAddressId: d.id, 
+              originalX: d.x,
+              originalZ: d.z,
               analysis: d.analysis!,
               itemDesc: d.analysis!.description,
               itemSeq: d.analysis!.seqProduto
           }))
-          .sort((a, b) => b.analysis.score - a.analysis.score); // Mais movimentados primeiro
+          .sort((a, b) => b.analysis.score - a.analysis.score); 
 
-      // 4. Match (Pareamento Ideal)
-      // O item Top 1 deve ir para o Endereço Top 1
-      rankedItems.forEach((item, index) => {
-          if (index >= rankedAddresses.length) return; // Mais itens que endereços (raro se for 1:1)
+      // 4. Matching com Otimização de Distância
+      // Para cada slot do ranking (começando do melhor), encontramos o item PQR que melhor se encaixa.
+      // Se houver múltiplos itens de score similar, tentamos pegar o que está mais PERTO fisicamente para evitar viagens longas de reabastecimento.
+      
+      const usedItems = new Set<string>();
 
-          const targetAddress = rankedAddresses[index];
-          const originalAddress = addressMap.get(item.originalAddressId);
+      rankedAddresses.forEach((targetAddress, index) => {
+          // Pegar o "Ideal" puramente por rank
+          if (index >= rankedItems.length) return;
 
-          // Atualizar a Sugestão no Target Address
-          // "Neste endereço (target), deveria estar o item com classe tal"
-          targetAddress.analysis = {
-             ...targetAddress.analysis!,
-             suggestedClass: item.analysis.pqrClass // A cor sugerida para este local é a classe do item Top
-          };
+          // [OTIMIZAÇÃO] Em vez de pegar cegamente o index, vamos olhar os top N itens não usados
+          // e ver se algum deles está MUITO perto deste slot.
+          // Janela de busca: próximos 5 itens do ranking (para não violar muito a regra de ouro)
+          let bestItemIdx = -1;
+          let minDist = Infinity;
+          
+          // Busca limitada para manter a integridade da Curva PQR (não misturar P com R)
+          const searchWindow = 10; 
+          let foundCandidate = false;
 
-          // Gerar Log de Movimento se necessário
-          // Se o item não está JÁ no melhor lugar
-          if (originalAddress && originalAddress.id !== targetAddress.id) {
-             const move: SuggestionMove = {
-                 fromAddress: `${originalAddress.rawAddress.RUA}-${originalAddress.rawAddress.PRED}-${originalAddress.rawAddress.AP}`,
-                 toAddress: `${targetAddress.rawAddress.RUA}-${targetAddress.rawAddress.PRED}-${targetAddress.rawAddress.AP}`,
-                 productCode: item.itemSeq,
-                 productName: item.itemDesc,
-                 reason: `Item ${item.analysis.pqrClass} (Score ${item.analysis.score.toFixed(2)}) movido para melhor posição.`,
-                 priority: item.analysis.pqrClass === 'P' ? 'HIGH' : 'MEDIUM'
-             };
+          for (let i = 0; i < rankedItems.length; i++) {
+             if (usedItems.has(rankedItems[i].itemSeq)) continue;
              
-             // Anexar sugestão ao endereço onde o item ESTÁ hoje, para saber que ele deve sair
-             originalAddress.analysis = {
-                 ...originalAddress.analysis!,
-                 suggestionMove: move
-             };
+             // Se já passamos muitos itens e a classe PQR mudou drasticamente, pare.
+             // (Ex: não troque um Super P por um P fraco só pq tá perto)
+             // Mas aqui assumimos que rankedItems já está ordenado por score.
+             
+             // Se este é o primeiro disponível, é o candidato padrão "Ouro"
+             if (!foundCandidate) {
+                 bestItemIdx = i;
+                 foundCandidate = true;
+                 
+                 // Se a janela de busca acabou, break e usa esse mesmo.
+                 // Mas queremos tentar otimizar.
+             }
+
+             // Calculo de Distância
+             const item = rankedItems[i];
+             const dist = Math.sqrt(Math.pow(targetAddress.x - item.originalX, 2) + Math.pow(targetAddress.z - item.originalZ, 2));
+
+             // Se a classe é a mesma, podemos usar proximidade como critério de desempate
+             const currentBest = rankedItems[bestItemIdx];
+             if (item.analysis.pqrClass === currentBest.analysis.pqrClass) {
+                  if (dist < minDist) {
+                      minDist = dist;
+                      bestItemIdx = i;
+                  }
+             }
+
+             // Limita a busca para não iterar o array todo
+             if (i > index + searchWindow) break;
+          }
+
+          if (bestItemIdx !== -1) {
+              const item = rankedItems[bestItemIdx];
+              usedItems.add(item.itemSeq);
+
+              targetAddress.analysis = {
+                 ...targetAddress.analysis!,
+                 suggestedClass: item.analysis.pqrClass
+              };
+
+              // Gerar sugestão de troca se não for o mesmo local
+              const originalAddress = addressMap.get(item.originalAddressId);
+              if (originalAddress && originalAddress.id !== targetAddress.id) {
+                 const move: SuggestionMove = {
+                     fromAddress: `${originalAddress.rawAddress.RUA}-${originalAddress.rawAddress.PRED}-${originalAddress.rawAddress.AP}`,
+                     toAddress: `${targetAddress.rawAddress.RUA}-${targetAddress.rawAddress.PRED}-${targetAddress.rawAddress.AP}`,
+                     productCode: item.itemSeq,
+                     productName: item.itemDesc,
+                     reason: `Ajuste PQR (Dist: ${minDist.toFixed(1)}m)`,
+                     priority: item.analysis.pqrClass === 'P' ? 'HIGH' : 'MEDIUM'
+                 };
+                 
+                 originalAddress.analysis = {
+                     ...originalAddress.analysis!,
+                     suggestionMove: move
+                 };
+              }
           }
       });
   });
@@ -236,7 +273,6 @@ export const processData = (
     };
   });
 
-  // [ATUALIZADO] Se temos dados PQR, calcular sugestões
   if (pqrMap) {
       return generateSuggestions(initialMerged);
   }
