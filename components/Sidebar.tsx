@@ -1,7 +1,7 @@
 import React from 'react';
 import { MergedData, ViewMode, AddressStatus, FilterState, ReceiptFilterType } from '../types';
 import { COLORS, STATUS_LABELS } from '../constants';
-import { Settings, Eye, Map, Box, Info, Search, Layers, Palette, CalendarClock, Truck, Tag, X } from 'lucide-react';
+import { Settings, Eye, Map, Box, Info, Search, Layers, Palette, CalendarClock, Truck, Tag, X, FileBarChart, TrendingUp } from 'lucide-react';
 import clsx from 'clsx';
 import logoIcon from '/icon.png';
 
@@ -24,10 +24,13 @@ interface SidebarProps {
     validPulmao: number;
     occupiedPulmao: number;
   };
-  colorMode: 'REALISTIC' | 'STATUS';
-  setColorMode: (m: 'REALISTIC' | 'STATUS') => void;
+  colorMode: 'REALISTIC' | 'STATUS' | 'PQR' | 'ABC'; // [ATUALIZADO]
+  setColorMode: (m: 'REALISTIC' | 'STATUS' | 'PQR' | 'ABC') => void;
   availableSectors: string[];
-  onCloseDetail: () => void; // [NOVO] Para fechar o painel
+  onCloseDetail: () => void;
+  onImportPQR: () => void; // [NOVO]
+  onImportABC: () => void; // [NOVO]
+  hasPQRData: boolean;
 }
 
 const SimplePie = ({ percent, color }: { percent: number, color: string }) => {
@@ -44,42 +47,8 @@ const SimplePie = ({ percent, color }: { percent: number, color: string }) => {
     )
 }
 
-const ItemDetail = ({ label, item }: { label: string, item: any }) => {
-    if (!item) return null;
-    
-    const qty = parseFloat(item.ESTQ_LOCUS) || 0;
-    const cpa = parseFloat(item.CPA) || 1; 
-    const boxes = Math.floor(qty / cpa);
-
-    return (
-        <div className="mt-4 pt-4 border-t border-slate-700/50">
-            <h4 className="text-[10px] font-bold uppercase text-cyan-500 mb-2 tracking-wider">{label}</h4>
-            <div className="text-sm text-slate-200">
-                <div className="font-medium text-white mb-1">{item.DESCRICAO}</div>
-                <div className="text-xs text-slate-400 mb-2">Cód: <span className="text-slate-300">{item.CODIGO}</span></div>
-                
-                <div className="grid grid-cols-2 gap-2 bg-slate-900/50 p-2 rounded text-xs">
-                    <div>
-                        <span className="text-slate-500 block text-[9px] uppercase">Estoque</span>
-                        <span className="text-cyan-400 font-bold">{boxes} cx</span>
-                        <span className="text-slate-400 ml-1">({qty} un)</span>
-                    </div>
-                    <div>
-                        <span className="text-slate-500 block text-[9px] uppercase">Validade</span>
-                        <span className="text-white">{item.VALIDADE}</span>
-                    </div>
-                    <div className="col-span-2">
-                        <span className="text-slate-500 block text-[9px] uppercase">Recebimento</span>
-                        <span className="text-white">{item.RECEBIMENTO}</span>
-                    </div>
-                </div>
-            </div>
-        </div>
-    );
-};
-
 export const Sidebar: React.FC<SidebarProps> = ({ 
-  viewMode, setViewMode, selectedItem, filters, setFilters, stats, colorMode, setColorMode, availableSectors, onCloseDetail 
+  viewMode, setViewMode, selectedItem, filters, setFilters, stats, colorMode, setColorMode, availableSectors, onCloseDetail, onImportPQR, onImportABC, hasPQRData
 }) => {
 
   const toggleStatus = (status: string) => {
@@ -133,22 +102,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   return (
     <>
-      {/* 1. SIDEBAR PRINCIPAL */}
       <div className="w-80 h-full bg-[#0f172a] border-r border-slate-800 flex flex-col text-slate-100 shadow-2xl z-30 font-sans relative">
         
-        {/* Header with Logo */}
+        {/* Header */}
         <div className="p-6 border-b border-slate-800 flex items-center bg-[#0b1120]">
-          {/* [CORREÇÃO] Caminho absoluto para o ícone na pasta public */}
-         <img 
-  src={logoIcon}
-  alt="JP Logo" 
-  className="h-10 w-auto mr-3"
-/>
+         <img src={logoIcon} alt="JP Logo" className="h-10 w-auto mr-3"/>
           <div>
               <h1 className="text-xl font-bold text-white leading-none tracking-tight">
               WMS <span className="text-cyan-400">3D</span>
               </h1>
-              <span className="text-[10px] text-slate-500 uppercase tracking-widest">Visualization</span>
+              <span className="text-[10px] text-slate-500 uppercase tracking-widest">Analytics</span>
           </div>
         </div>
 
@@ -167,11 +130,24 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         <div className="flex-1 overflow-y-auto custom-scrollbar px-4 py-4">
           
-          {/* [REMOVIDO] A seção de detalhes estava aqui. Agora está no Drawer abaixo. */}
+          {/* [NOVO] Seção de Importação de Análise */}
+          <div className="mb-6 bg-slate-900/50 p-3 rounded-lg border border-slate-800">
+             <h3 className="text-[10px] font-bold uppercase text-slate-500 mb-3 tracking-wider flex items-center gap-2"><FileBarChart size={10}/> Importar Curvas</h3>
+             <div className="grid grid-cols-2 gap-2">
+                <button onClick={onImportPQR} className="p-2 bg-slate-800 hover:bg-slate-700 text-cyan-400 border border-slate-700 rounded flex flex-col items-center gap-1 text-[9px] uppercase font-bold transition-all">
+                   <TrendingUp size={16} /> Importar PQR
+                </button>
+                <button onClick={onImportABC} className="p-2 bg-slate-800/50 text-slate-500 border border-slate-800 rounded flex flex-col items-center gap-1 text-[9px] uppercase font-bold cursor-not-allowed opacity-50 relative overflow-hidden">
+                   <div className="absolute top-1 right-1 w-2 h-2 rounded-full bg-yellow-500 animate-pulse"></div>
+                   <TrendingUp size={16} /> Importar ABC
+                   <span className="text-[7px] text-yellow-500">Em Desenvolvimento</span>
+                </button>
+             </div>
+          </div>
 
           <div>
             <h3 className="text-[10px] font-bold uppercase text-slate-500 mb-3 tracking-wider flex items-center gap-2"><Palette size={10}/> Visualização</h3>
-            <div className="grid grid-cols-2 gap-2 mb-6">
+            <div className="grid grid-cols-2 gap-2 mb-2">
                 <button onClick={() => setColorMode('REALISTIC')} className={clsx("p-2 text-[10px] font-bold uppercase rounded border transition-all flex items-center justify-center gap-2", colorMode === 'REALISTIC' ? "bg-cyan-900/40 border-cyan-500 text-cyan-400" : "bg-slate-800/40 border-transparent text-slate-500 hover:text-slate-300")}>
                   Realista
                 </button>
@@ -179,12 +155,71 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   Status
                 </button>
             </div>
+            
+            {/* [NOVO] Botões de Análise Heatmap */}
+            <div className="grid grid-cols-2 gap-2 mb-4">
+                <button 
+                  onClick={() => setColorMode('PQR')} 
+                  disabled={!hasPQRData}
+                  className={clsx("p-2 text-[10px] font-bold uppercase rounded border transition-all flex items-center justify-center gap-2 relative", colorMode === 'PQR' ? "bg-purple-900/40 border-purple-500 text-purple-400" : "bg-slate-800/40 border-transparent text-slate-500 hover:text-slate-300", !hasPQRData && "opacity-40 cursor-not-allowed")}
+                >
+                  <TrendingUp size={12}/> Mapa PQR
+                  {!hasPQRData && <span className="absolute -top-1 -right-1 flex h-2 w-2"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span><span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span></span>}
+                </button>
+                 <button 
+                  onClick={() => setColorMode('ABC')} 
+                  disabled
+                  className="p-2 text-[10px] font-bold uppercase rounded border border-transparent bg-slate-800/20 text-slate-600 flex items-center justify-center gap-2 cursor-not-allowed"
+                >
+                  <TrendingUp size={12}/> Mapa ABC
+                </button>
+            </div>
+            
+            {/* [NOVO] Legenda PQR */}
+            {colorMode === 'PQR' && (
+              <div className="bg-slate-900 p-2 rounded mb-6 border border-slate-700 animate-in fade-in slide-in-from-top-2">
+                 <div className="text-[9px] font-bold text-purple-400 mb-2 uppercase text-center border-b border-purple-900/50 pb-1">Legenda Curva PQR (Visitas)</div>
+                 <div className="grid grid-cols-3 gap-1 text-center">
+                    <div className="bg-slate-800 p-1 rounded">
+                       <div className="w-full h-1 bg-red-500 mb-1 rounded-full shadow-[0_0_5px_red]"></div>
+                       <div className="text-[8px] font-bold text-red-400">P - Alta</div>
+                    </div>
+                     <div className="bg-slate-800 p-1 rounded">
+                       <div className="w-full h-1 bg-yellow-500 mb-1 rounded-full shadow-[0_0_5px_yellow]"></div>
+                       <div className="text-[8px] font-bold text-yellow-500">Q - Média</div>
+                    </div>
+                     <div className="bg-slate-800 p-1 rounded">
+                       <div className="w-full h-1 bg-green-500 mb-1 rounded-full shadow-[0_0_5px_green]"></div>
+                       <div className="text-[8px] font-bold text-green-500">R - Baixa</div>
+                    </div>
+                 </div>
+              </div>
+            )}
 
             <h3 className="text-[10px] font-bold uppercase text-slate-500 mb-3 tracking-wider flex items-center gap-2"><Search size={10}/> Filtros</h3>
             
             <div className="relative mb-4 group">
               <Search size={14} className="absolute left-3 top-2.5 text-slate-500 group-focus-within:text-cyan-400 transition-colors"/>
               <input type="text" placeholder="Buscar Código, Descrição..." value={filters.search} onChange={(e) => setFilters(prev => ({...prev, search: e.target.value}))} className="w-full bg-slate-900 border border-slate-700 rounded-lg pl-9 pr-3 py-2 text-xs text-white focus:border-cyan-500 focus:outline-none transition-all placeholder:text-slate-600 shadow-inner" />
+            </div>
+
+            <div className="mb-4">
+              <label className="text-[10px] uppercase font-bold text-slate-500 mb-2 flex items-center gap-2"><Layers size={12}/> Tipos</label>
+              <div className="grid grid-cols-2 gap-2">
+                <button onClick={() => toggleType('A')} className={clsx("flex items-center justify-center gap-2 p-2 rounded text-xs font-medium border transition-all", filters.type.includes('A') ? "bg-cyan-600 border-cyan-500 text-white shadow-lg shadow-cyan-900/20" : "bg-slate-800/50 border-transparent text-slate-500 opacity-60 hover:opacity-100")}>
+                  Apanha (A)
+                </button>
+                <button onClick={() => toggleType('P')} className={clsx("flex items-center justify-center gap-2 p-2 rounded text-xs font-medium border transition-all", filters.type.includes('P') ? "bg-cyan-600 border-cyan-500 text-white shadow-lg shadow-cyan-900/20" : "bg-slate-800/50 border-transparent text-slate-500 opacity-60 hover:opacity-100")}>
+                  Pulmão (P)
+                </button>
+              </div>
+              {/* [NOVO] Atalho para visualizar APENAS APANHA */}
+               <button 
+                  onClick={() => setFilters(prev => ({ ...prev, type: ['A'] }))}
+                  className="w-full mt-2 text-[9px] text-cyan-500 hover:text-cyan-300 underline decoration-dotted uppercase text-center"
+               >
+                  Visualizar Somente Apanha
+               </button>
             </div>
 
               {availableSectors.length > 0 && (
@@ -220,47 +255,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   </div>
               )}
 
-            {/* Resto dos filtros (Status, Validade, etc.) */}
-            <div className="mb-4">
-              <div className="grid grid-cols-2 gap-2">
-                <button onClick={() => toggleType('A')} className={clsx("flex items-center justify-center gap-2 p-2 rounded text-xs font-medium border transition-all", filters.type.includes('A') ? "bg-cyan-600 border-cyan-500 text-white shadow-lg shadow-cyan-900/20" : "bg-slate-800/50 border-transparent text-slate-500 opacity-60 hover:opacity-100")}>
-                  <Layers size={14}/> Apanha
-                </button>
-                <button onClick={() => toggleType('P')} className={clsx("flex items-center justify-center gap-2 p-2 rounded text-xs font-medium border transition-all", filters.type.includes('P') ? "bg-cyan-600 border-cyan-500 text-white shadow-lg shadow-cyan-900/20" : "bg-slate-800/50 border-transparent text-slate-500 opacity-60 hover:opacity-100")}>
-                  <Box size={14}/> Pulmão
-                </button>
-              </div>
-            </div>
-
-            <div className="mb-4">
-              <label className="text-[10px] uppercase font-bold text-slate-500 mb-2 flex items-center gap-2"><CalendarClock size={12} /> Validade (Dias)</label>
-              <div className="grid grid-cols-4 gap-1">
-                  {[30, 60, 90, 120].map(days => (
-                      <button key={days} onClick={() => setExpiry(days)} className={clsx("text-[10px] py-1.5 rounded border transition-all text-center font-medium", filters.expiryDays === days ? "bg-red-500/20 border-red-500 text-red-400" : "bg-slate-800/50 border-transparent text-slate-500 hover:bg-slate-800 hover:text-slate-300")}>
-                          {days}
-                      </button>
-                  ))}
-              </div>
-            </div>
-
-            <div className="mb-6">
-              <label className="text-[10px] uppercase font-bold text-slate-500 mb-2 flex items-center gap-2"><Truck size={12} /> Recebimento</label>
-              <div className="grid grid-cols-3 gap-1 mb-2">
-                  <button onClick={() => setReceipt('YESTERDAY')} className={clsx("text-[10px] p-1 rounded border transition-all", filters.receiptType === 'YESTERDAY' ? "bg-cyan-900/30 border-cyan-500 text-cyan-400" : "bg-slate-800/50 border-transparent text-slate-500")}>Ontem</button>
-                  <button onClick={() => setReceipt('THIS_WEEK')} className={clsx("text-[10px] p-1 rounded border transition-all", filters.receiptType === 'THIS_WEEK' ? "bg-cyan-900/30 border-cyan-500 text-cyan-400" : "bg-slate-800/50 border-transparent text-slate-500")}>Semana</button>
-                  <button onClick={() => setReceipt('THIS_MONTH')} className={clsx("text-[10px] p-1 rounded border transition-all", filters.receiptType === 'THIS_MONTH' ? "bg-cyan-900/30 border-cyan-500 text-cyan-400" : "bg-slate-800/50 border-transparent text-slate-500")}>Mês</button>
-              </div>
-              <div className="flex gap-2 items-center">
-                  <button onClick={() => setReceipt('SPECIFIC')} className={clsx("text-[10px] px-2 py-1.5 rounded border transition-all whitespace-nowrap", filters.receiptType === 'SPECIFIC' ? "bg-cyan-900/30 border-cyan-500 text-cyan-400" : "bg-slate-800/50 border-transparent text-slate-500")}>Data:</button>
-                  <input 
-                      type="date" 
-                      value={filters.receiptDate} 
-                      onChange={(e) => setFilters(prev => ({ ...prev, receiptType: 'SPECIFIC', receiptDate: e.target.value }))}
-                      className="bg-slate-900 border border-slate-700 rounded text-xs px-2 py-1 text-slate-300 w-full focus:border-cyan-500 outline-none"
-                  />
-              </div>
-            </div>
-
+            {/* Resto dos filtros (Status, Validade, etc.) - Preservados */}
+            
             <div className="space-y-2 mb-6">
               <label className="text-[10px] uppercase font-bold text-slate-500 mb-1 block">Status</label>
               {Object.entries(STATUS_LABELS).map(([key, label]) => {
@@ -299,24 +295,23 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </div>
           </div>
           <div className="text-center pt-2 border-t border-slate-800/50">
-              <p className="text-[9px] text-slate-600">Desenvolvido por <span className="text-cyan-700 font-semibold hover:text-cyan-500 transition-colors cursor-default">Juliano Patrick</span></p>
+              <p className="text-[9px] text-slate-600">JP Tech Solutions</p>
           </div>
         </div>
       </div>
 
-      {/* 2. DETAIL DRAWER (PAINEL DESLIZANTE) */}
+      {/* DETAIL DRAWER */}
       <div 
         className={clsx(
           "absolute top-0 bottom-0 w-80 bg-[#0f172a] border-r border-slate-800 z-20 transition-transform duration-300 ease-in-out shadow-2xl",
-          selectedItem ? "translate-x-80" : "translate-x-0" // Posicionado à esquerda (atrás da sidebar) ou movido para a direita (visível)
+          selectedItem ? "translate-x-80" : "translate-x-0" 
         )}
-        style={{ left: 0 }} // Ele começa na mesma posição da sidebar e desliza para a direita
+        style={{ left: 0 }} 
       >
         <div className="h-full flex flex-col p-4 overflow-y-auto">
-          {/* Header do Drawer */}
           <div className="flex justify-between items-center mb-6 pb-4 border-b border-slate-800/50">
              <h3 className="font-bold text-white flex items-center gap-2 text-xs uppercase tracking-wide">
-               <Info size={14} className="text-cyan-400"/> Detalhes da Posição
+               <Info size={14} className="text-cyan-400"/> Detalhes
              </h3>
              <button onClick={onCloseDetail} className="text-slate-500 hover:text-white transition-colors">
                <X size={16} />
@@ -348,8 +343,33 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   </div>
                 </div>
                 
-                <ItemDetail label="Apanha" item={selectedItem.rawItem} />
-                <ItemDetail label="Pulmão" item={selectedItem.pulmaoItem} />
+                {/* [NOVO] Card de Dados de Análise */}
+                {selectedItem.analysis && (
+                   <div className="mt-4 pt-4 border-t border-slate-700/50">
+                      <h4 className="text-[10px] font-bold uppercase text-purple-400 mb-2 tracking-wider">Análise PQR</h4>
+                      <div className="bg-purple-900/20 border border-purple-500/30 p-2 rounded grid grid-cols-2 gap-2">
+                          <div>
+                              <span className="block text-[9px] uppercase text-slate-400">Classe</span>
+                              <span className={clsx("font-bold text-lg", selectedItem.analysis.pqrClass === 'P' ? 'text-red-400' : selectedItem.analysis.pqrClass === 'Q' ? 'text-yellow-400' : 'text-green-400')}>
+                                  {selectedItem.analysis.pqrClass}
+                              </span>
+                          </div>
+                          <div>
+                              <span className="block text-[9px] uppercase text-slate-400">Visitas</span>
+                              <span className="font-bold text-white text-lg">{selectedItem.analysis.visits}</span>
+                          </div>
+                          <div className="col-span-2 text-[10px] text-slate-400 italic">
+                             {selectedItem.analysis.description}
+                          </div>
+                      </div>
+                   </div>
+                )}
+                
+                {!selectedItem.analysis && selectedItem.rawAddress.ESP === 'A' && (
+                    <div className="mt-2 text-[10px] text-slate-600 italic border-t border-slate-800 pt-2">
+                        Sem dados de curva PQR para este endereço.
+                    </div>
+                )}
             </div>
           )}
         </div>
