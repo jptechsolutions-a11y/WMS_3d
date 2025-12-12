@@ -1,10 +1,10 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Scene3D } from './components/Scene3D';
 import { Scene2D } from './components/Scene2D';
 import { Sidebar } from './components/Sidebar';
 import { Handheld } from './components/Handheld';
 import { processData, parseCSV } from './utils/dataProcessor';
-import { MergedData, ViewMode, FilterState, RawAddressRow, RawItemRow, AddressStatus, ReceiptFilterType } from './types';
+import { MergedData, ViewMode, FilterState, RawAddressRow, RawItemRow, AddressStatus, AnalysisRow } from './types';
 import { Upload, AlertTriangle } from 'lucide-react';
 
 const parseDatePTBR = (dateStr: string): Date | null => {
@@ -29,12 +29,17 @@ export default function App() {
   const [viewMode, setViewMode] = useState<ViewMode>('3D_ORBIT');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   
-  const [colorMode, setColorMode] = useState<'REALISTIC' | 'STATUS'>('REALISTIC');
+  // [ATUALIZADO] colorMode type
+  const [colorMode, setColorMode] = useState<'REALISTIC' | 'STATUS' | 'PQR' | 'ABC'>('REALISTIC');
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [teleportPos, setTeleportPos] = useState<{x:number, y:number, z:number} | null>(null);
   const [loading, setLoading] = useState(false);
   
   const [files, setFiles] = useState<{ structure?: File, items?: File, pulmao?: File }>({});
+
+  // Refs ocultos para input de arquivo
+  const pqrInputRef = useRef<HTMLInputElement>(null);
+  const abcInputRef = useRef<HTMLInputElement>(null);
 
   const [filters, setFilters] = useState<FilterState>({
     status: [AddressStatus.Occupied, AddressStatus.Available, AddressStatus.Reserved, AddressStatus.Blocked],
@@ -60,7 +65,6 @@ export default function App() {
      }
   }, [availableSectors]);
 
-  // Efeito de Teleporte Automático ao filtrar Setor
   useEffect(() => {
       const isFilteringSpecific = filters.sector.length > 0 && filters.sector.length < availableSectors.length;
       
@@ -137,7 +141,6 @@ export default function App() {
                    matches = false;
                } else {
                    receiptDate.setHours(0,0,0,0);
-                   
                    switch (filters.receiptType) {
                        case 'YESTERDAY':
                            const yest = new Date(now);
@@ -169,7 +172,6 @@ export default function App() {
                }
            }
        }
-
        if (matches) ids.add(d.id);
     });
     return ids;
@@ -233,11 +235,48 @@ export default function App() {
     }
   };
 
+  // [NOVO] Handlers para importação secundária de PQR/ABC
+  const handlePQRImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+     if (!e.target.files || !e.target.files[0]) return;
+     if (data.length === 0) return alert('Carregue a estrutura primeiro!');
+     
+     setLoading(true);
+     try {
+       const pqrRows = await parseCSV<AnalysisRow>(e.target.files[0]);
+       
+       // Reprocessar dados existentes mesclando com PQR
+       // Precisamos dos CSVs originais? Na verdade podemos re-extrair do estado 'data', 
+       // mas o processData espera raw rows.
+       // Solução simplificada: Armazenar os RawRows originais seria ideal, 
+       // mas para simplificar vamos assumir que o usuário fará o fluxo novamente OU 
+       // reconstruímos a lista.
+       // MELHOR: Apenas atualizar o estado 'data' iterando sobre ele e adicionando info.
+       
+       // Como o calculatePQR está no dataProcessor, vamos reutilizar a função.
+       // Mas para isso precisamos dos raw rows. Vamos salvar no state 'data' os rawItems?
+       // O MergedData JÁ TEM rawAddress e rawItem!
+       
+       const addresses = data.map(d => d.rawAddress);
+       const items = data.map(d => d.rawItem).filter(Boolean) as RawItemRow[];
+       const pulmao = data.map(d => d.pulmaoItem).filter(Boolean) as RawItemRow[];
+       
+       const merged = processData(addresses, items, pulmao, pqrRows);
+       setData(merged);
+       setColorMode('PQR'); // Ativa automaticamente a visão PQR
+       alert('Curva PQR importada com sucesso!');
+
+     } catch(err) {
+       console.error(err);
+       alert('Erro ao importar PQR.');
+     } finally {
+       setLoading(false);
+     }
+  };
+
   const selectedItem = useMemo(() => 
     data.find(d => d.id === selectedId) || null, 
   [selectedId, data]);
 
-  // [CORREÇÃO] Lógica de Toggle (Selecionar/Desselecionar)
   const handleSelect = (item: MergedData) => {
     setSelectedId(prevId => prevId === item.id ? null : item.id);
   };
@@ -246,6 +285,16 @@ export default function App() {
     setTeleportPos({ x, y, z });
     setTimeout(() => setTeleportPos(null), 100);
   };
+
+  // [CORREÇÃO] Filtragem para 2D agora considera se estamos no modo Apanha somente
+  const filteredDataFor2D = data.filter(d => 
+    filters.type.includes(d.rawAddress.ESP) && 
+    filters.status.includes(d.rawAddress.STATUS) &&
+    filters.sector.includes(d.sector) &&
+    visibleItemIds.has(d.id) 
+  );
+  
+  const hasPQRData = useMemo(() => data.some(d => d.analysis), [data]);
 
   if (data.length === 0) {
     return (
@@ -285,15 +334,12 @@ export default function App() {
     );
   }
 
-  const filteredDataFor2D = data.filter(d => 
-    filters.type.includes(d.rawAddress.ESP) && 
-    filters.status.includes(d.rawAddress.STATUS) &&
-    filters.sector.includes(d.sector) &&
-    visibleItemIds.has(d.id) 
-  );
-
   return (
     <div className="flex w-full h-screen bg-[#0f172a] overflow-hidden">
+      {/* Inputs Ocultos */}
+      <input type="file" ref={pqrInputRef} accept=".csv" onChange={handlePQRImport} className="hidden" />
+      <input type="file" ref={abcInputRef} accept=".csv" className="hidden" />
+
       <Sidebar 
         viewMode={viewMode}
         setViewMode={setViewMode}
@@ -304,8 +350,10 @@ export default function App() {
         colorMode={colorMode}
         setColorMode={setColorMode}
         availableSectors={availableSectors}
-        // [NOVO] Passamos a função de fechar detalhe para a Sidebar (se necessário)
         onCloseDetail={() => setSelectedId(null)}
+        onImportPQR={() => pqrInputRef.current?.click()}
+        onImportABC={() => {}}
+        hasPQRData={hasPQRData}
       />
       
       <main className="flex-1 relative h-full">
@@ -316,7 +364,7 @@ export default function App() {
              visibleTypes={filters.type} 
              visibleItemIds={visibleItemIds}
              mode={viewMode === '3D_WALK' ? 'WALK' : 'ORBIT'} 
-             onSelect={handleSelect} // Usa a nova lógica de toggle
+             onSelect={handleSelect}
              selectedId={selectedId}
              teleportPos={teleportPos}
              isMobileOpen={isMobileOpen}
@@ -325,8 +373,9 @@ export default function App() {
         ) : (
            <Scene2D 
              data={filteredDataFor2D}
-             onSelect={handleSelect} // Usa a nova lógica de toggle
+             onSelect={handleSelect}
              selectedId={selectedId}
+             colorMode={colorMode} // [NOVO]
            />
         )}
         
@@ -334,7 +383,7 @@ export default function App() {
            <Handheld 
              data={data} 
              onTeleport={handleTeleport}
-             onSelect={handleSelect} // Usa a nova lógica de toggle
+             onSelect={handleSelect}
              isOpen={isMobileOpen}
              setIsOpen={setIsMobileOpen}
            />
