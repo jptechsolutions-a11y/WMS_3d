@@ -1,5 +1,5 @@
 import Papa from 'papaparse';
-import { RawAddressRow, RawItemRow, MergedData, AddressStatus } from '../types';
+import { RawAddressRow, RawItemRow, MergedData, AddressStatus, AnalysisRow } from '../types';
 import { COLORS, DIMENSIONS } from '../constants';
 
 // Helper to extract number from string (e.g., "RUA001" -> 1)
@@ -9,12 +9,8 @@ export const extractNumber = (str: string): number => {
   return match ? parseInt(match[0], 10) : 0;
 };
 
-// [NOVO] Helper para extrair o setor da descrição da rua
-// Ex: "RUA 021 MERCEARIA" -> "MERCEARIA"
-// Ex: "RUA 01 - LIQUIDA" -> "LIQUIDA"
 const extractSector = (desc: string): string => {
   if (!desc) return 'GERAL';
-  // Remove "RUA", digitos opcionais, espaços e hifens do início
   return desc.replace(/^RUA\s*\d+\s*[-]?\s*/i, '').trim().toUpperCase() || 'GERAL';
 };
 
@@ -29,79 +25,130 @@ export const parseCSV = <T>(file: File): Promise<T[]> => {
   });
 };
 
+// [NOVO] Lógica PQR baseada em Visitas (Pareto / Curva)
+// P = 0-80% das visitas acumuladas
+// Q = 80-95% das visitas acumuladas
+// R = 95-100% das visitas acumuladas
+const calculatePQR = (analysisRows: AnalysisRow[]) => {
+  // 1. Converter visitas para número e ordenar decrescente
+  const sorted = analysisRows.map(row => ({
+    ...row,
+    visitasNum: parseInt(row.VISITAS || '0', 10),
+    key: `${parseInt(row.CODRUA)}-${parseInt(row.NROPREDIO)}-${parseInt(row.NROAPARTAMENTO)}-${parseInt(row.NROSALA)}` // Chave única de endereço
+  })).sort((a, b) => b.visitasNum - a.visitasNum);
+
+  const totalVisits = sorted.reduce((acc, curr) => acc + curr.visitasNum, 0);
+  
+  let currentAccumulated = 0;
+  const pqrMap = new Map<string, { class: 'P' | 'Q' | 'R', visits: number, seq: string, desc: string }>();
+
+  sorted.forEach(item => {
+    currentAccumulated += item.visitasNum;
+    const percentage = (currentAccumulated / totalVisits) * 100;
+    
+    let classification: 'P' | 'Q' | 'R' = 'R';
+    if (percentage <= 80) classification = 'P';
+    else if (percentage <= 95) classification = 'Q';
+    
+    // Se visitas for 0, força ser R
+    if (item.visitasNum === 0) classification = 'R';
+
+    pqrMap.set(item.key, {
+      class: classification,
+      visits: item.visitasNum,
+      seq: item.SEQPRODUTO,
+      desc: item.DESCCOMPLETA
+    });
+  });
+
+  return pqrMap;
+};
+
 export const processData = (
     addresses: RawAddressRow[], 
     items: RawItemRow[],
-    pulmaoItems: RawItemRow[] = [] 
+    pulmaoItems: RawItemRow[] = [],
+    analysisData: AnalysisRow[] = [] // [NOVO] Dados PQR
 ): MergedData[] => {
   
-  // Map Picking Items
   const itemMap = new Map<string, RawItemRow>();
-  items.forEach(item => {
-    itemMap.set(item.SEQENDERECO, item);
-  });
+  items.forEach(item => itemMap.set(item.SEQENDERECO, item));
 
-  // Map Pulmão Items
   const pulmaoMap = new Map<string, RawItemRow>();
-  pulmaoItems.forEach(item => {
-    pulmaoMap.set(item.SEQENDERECO, item);
-  });
+  pulmaoItems.forEach(item => pulmaoMap.set(item.SEQENDERECO, item));
+
+  // Processar PQR se existir
+  let pqrMap: Map<string, any> | null = null;
+  if (analysisData.length > 0) {
+    pqrMap = calculatePQR(analysisData);
+  }
 
   return addresses.map(addr => {
     const item = itemMap.get(addr.SEQENDERECO);
     const pItem = pulmaoMap.get(addr.SEQENDERECO);
     
-    // 1. Parsing IDs
     const ruaIdx = extractNumber(addr.RUA);
     const predIdx = extractNumber(addr.PRED);
     const apIdx = extractNumber(addr.AP);
     const slIdx = extractNumber(addr.SL) || 1; 
     
-    // [NOVO] Extração do Setor
     const sector = extractSector(addr.DESCRUA || '');
 
-    // 2. Status Mapping
+    // Status Mapping
     let status = addr.STATUS as AddressStatus;
     if (![AddressStatus.Reserved, AddressStatus.Occupied, AddressStatus.Available, AddressStatus.Blocked].includes(status)) {
       status = AddressStatus.Blocked; 
     }
 
-    // 3. "Pulmão" (Tunnel) Logic
+    // Tunnel Logic
     const isTunnel = addr.ESP === 'P' && apIdx <= 3;
     let visualY = apIdx;
     if (isTunnel) {
         visualY = 5 + (apIdx - 1); 
     }
 
-    // 4. COORDINATE CALCULATION 
+    // Coordinates
     const aisleCenterX = ruaIdx * DIMENSIONS.STREET_SPACING;
-
-    // Side Logic
     const isEvenPred = predIdx % 2 === 0;
     const sideMultiplier = isEvenPred ? 1 : -1;
-    
-    // Z Axis
     const predioSequenceIndex = Math.floor((predIdx - 1) / 2);
     const bayCenterZ = -(predioSequenceIndex * DIMENSIONS.BAY_WIDTH);
-
-    // Sala Logic
     const salaOffset = slIdx === 1 ? -0.7 : 0.7;
     
     const x = aisleCenterX + (sideMultiplier * DIMENSIONS.AISLE_CENTER_OFFSET);
     const z = bayCenterZ + salaOffset;
     const y = (visualY - 1) * DIMENSIONS.RACK_HEIGHT;
 
+    // [NOVO] Vincular dados PQR
+    let analysisInfo = undefined;
+    if (pqrMap) {
+      // Criar chave compatível com a lógica do calculatePQR
+      // Nota: rawAddress strings podem ter zeros à esquerda "001", o parse resolve isso
+      const addressKey = `${ruaIdx}-${predIdx}-${apIdx}-${slIdx}`;
+      const pqrData = pqrMap.get(addressKey);
+      
+      if (pqrData) {
+        analysisInfo = {
+          pqrClass: pqrData.class,
+          visits: pqrData.visits,
+          seqProduto: pqrData.seq,
+          description: pqrData.desc
+        };
+      }
+    }
+
     return {
       id: addr.SEQENDERECO,
       rawAddress: addr,
       rawItem: item,
       pulmaoItem: pItem,
+      analysis: analysisInfo, // [NOVO]
       x,
       y,
       z,
       color: COLORS[status] || COLORS.DEFAULT,
       isTunnel,
-      sector // [NOVO]
+      sector
     };
   });
 };
