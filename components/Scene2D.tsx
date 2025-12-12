@@ -7,15 +7,46 @@ interface Scene2DProps {
   data: MergedData[];
   onSelect: (data: MergedData) => void;
   selectedId: string | null;
-  colorMode: 'REALISTIC' | 'STATUS' | 'PQR' | 'ABC' | 'SUGGESTION_PQR'; // [ATUALIZADO]
+  colorMode: 'REALISTIC' | 'STATUS' | 'PQR' | 'ABC' | 'SUGGESTION_PQR'; 
+  allData?: MergedData[]; // [NOVO] Necessário para achar coordenadas do alvo
 }
 
-export const Scene2D: React.FC<Scene2DProps> = ({ data, onSelect, selectedId, colorMode }) => {
+export const Scene2D: React.FC<Scene2DProps> = ({ data, onSelect, selectedId, colorMode, allData }) => {
   const [transform, setTransform] = useState({ x: 0, y: 0, k: 1 }); 
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const isDragging = useRef(false);
   const lastPos = useRef({ x: 0, y: 0 });
+
+  // [NOVO] Lookup Map para encontrar coordenadas de qualquer endereço rapidamente
+  const addressLookup = useMemo(() => {
+     const map = new Map<string, { x: number, z: number }>();
+     const source = allData || data;
+     source.forEach(d => {
+         const addrKey = `${d.rawAddress.RUA}-${d.rawAddress.PRED}-${d.rawAddress.AP}`;
+         map.set(addrKey, { x: d.x, z: d.z });
+     });
+     return map;
+  }, [allData, data]);
+
+  // [NOVO] Dados do Item Selecionado e seu Alvo (se houver sugestão)
+  const selectionInfo = useMemo(() => {
+     if (!selectedId) return null;
+     const selected = data.find(d => d.id === selectedId);
+     if (!selected || !selected.analysis?.suggestionMove) return null;
+
+     const targetAddr = selected.analysis.suggestionMove.toAddress; // "RUA-PRED-AP"
+     // Normalizar string para bater com a chave do mapa (remover zeros se necessario, mas aqui assumimos consistencia)
+     // O suggestionMove.toAddress vem do gerador que usa o mesmo formato.
+     const targetCoords = addressLookup.get(targetAddr);
+     
+     if (!targetCoords) return null;
+
+     return {
+         source: { x: selected.x, z: selected.z },
+         target: targetCoords
+     };
+  }, [selectedId, data, addressLookup]);
 
   const { bounds, streetLabels } = useMemo(() => {
     let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
@@ -52,7 +83,6 @@ export const Scene2D: React.FC<Scene2DProps> = ({ data, onSelect, selectedId, co
     };
   }, [data]);
 
-  // ... (Zoom logic preserved) ...
   const handleWheel = (e: React.WheelEvent) => {
     e.preventDefault();
     const scaleFactor = 1.1;
@@ -84,10 +114,8 @@ export const Scene2D: React.FC<Scene2DProps> = ({ data, onSelect, selectedId, co
 
   const baseScale = 15; 
 
-  // [ATUALIZADO] Lógica de Cor
   const getItemColor = (item: MergedData) => {
     if (colorMode === 'SUGGESTION_PQR' && item.analysis?.suggestedClass) {
-       // Pinta com a cor da classe SUGERIDA
        if (item.analysis.suggestedClass === 'P') return COLORS.PQR_P;
        if (item.analysis.suggestedClass === 'Q') return COLORS.PQR_Q;
        if (item.analysis.suggestedClass === 'R') return COLORS.PQR_R;
@@ -112,13 +140,26 @@ export const Scene2D: React.FC<Scene2DProps> = ({ data, onSelect, selectedId, co
         onMouseLeave={handleMouseUp}
         onWheel={handleWheel}
     >
-       <div className="absolute top-4 left-4 text-slate-500 font-mono text-sm z-10 pointer-events-none select-none">
+       {/* CSS para Animação de Piscar */}
+       <style>{`
+         @keyframes neonBlink {
+           0%, 100% { stroke: #06b6d4; stroke-width: 2px; fill-opacity: 1; }
+           50% { stroke: #22d3ee; stroke-width: 4px; fill-opacity: 0.5; }
+         }
+         .target-blink {
+           animation: neonBlink 1s infinite alternate;
+         }
+         @keyframes dashDraw {
+           to { stroke-dashoffset: 0; }
+         }
+       `}</style>
+
+       <div className="absolute top-4 left-4 text-slate-500 font-mono text-sm z-10 pointer-events-none select-none bg-white/80 px-2 py-1 rounded shadow backdrop-blur-sm">
          TOP DOWN VIEW • 
-         {colorMode === 'PQR' && <span className="text-purple-600 font-bold ml-2">ATUAL</span>}
-         {colorMode === 'SUGGESTION_PQR' && <span className="text-emerald-600 font-bold ml-2">SUGESTÃO OTIMIZADA</span>}
+         {colorMode === 'PQR' && <span className="text-purple-600 font-bold ml-2">MODO ATUAL</span>}
+         {colorMode === 'SUGGESTION_PQR' && <span className="text-emerald-600 font-bold ml-2">MODO SUGESTÃO</span>}
        </div>
 
-       {/* ... (Zoom Controls Preserved) ... */}
        <div className="absolute bottom-8 right-8 flex flex-col gap-2 z-10">
           <button onClick={() => setTransform(p => ({ ...p, k: p.k * 1.2 }))} className="p-2 bg-white shadow rounded hover:bg-slate-50"><ZoomIn size={20} className="text-slate-600"/></button>
           <button onClick={() => setTransform(p => ({ ...p, k: p.k / 1.2 }))} className="p-2 bg-white shadow rounded hover:bg-slate-50"><ZoomOut size={20} className="text-slate-600"/></button>
@@ -140,6 +181,9 @@ export const Scene2D: React.FC<Scene2DProps> = ({ data, onSelect, selectedId, co
              <pattern id="grid" width={baseScale * 5} height={baseScale * 5} patternUnits="userSpaceOnUse">
                <path d={`M ${baseScale * 5} 0 L 0 0 0 ${baseScale * 5}`} fill="none" stroke="#e2e8f0" strokeWidth="2"/>
              </pattern>
+             <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+                <polygon points="0 0, 10 3.5, 0 7" fill="#06b6d4" />
+             </marker>
           </defs>
           <rect 
             x={bounds.minX * baseScale} 
@@ -164,6 +208,7 @@ export const Scene2D: React.FC<Scene2DProps> = ({ data, onSelect, selectedId, co
               </text>
           ))}
 
+          {/* Render Items */}
           {data.map(item => {
              const sx = item.x * baseScale;
              const sy = item.z * baseScale;
@@ -171,6 +216,14 @@ export const Scene2D: React.FC<Scene2DProps> = ({ data, onSelect, selectedId, co
              const h = DIMENSIONS.RACK_DEPTH * baseScale;
              const isSelected = selectedId === item.id;
              const fillColor = getItemColor(item); 
+
+             // Verifica se este item é o ALVO da sugestão do item selecionado
+             let isTarget = false;
+             if (selectionInfo && 
+                 Math.abs(item.x - selectionInfo.target.x) < 0.01 && 
+                 Math.abs(item.z - selectionInfo.target.z) < 0.01) {
+                 isTarget = true;
+             }
 
              return (
                <g 
@@ -184,9 +237,10 @@ export const Scene2D: React.FC<Scene2DProps> = ({ data, onSelect, selectedId, co
                     width={w}
                     height={h}
                     fill={fillColor}
-                    stroke={isSelected ? 'black' : '#fff'}
-                    strokeWidth={isSelected ? 2 : 1}
+                    stroke={isSelected ? 'black' : isTarget ? '#06b6d4' : '#fff'}
+                    strokeWidth={isSelected ? 2 : isTarget ? 3 : 1}
                     rx={2}
+                    className={isTarget ? "target-blink" : ""}
                  />
                  {transform.k > 1.5 && (
                      <text 
@@ -204,6 +258,22 @@ export const Scene2D: React.FC<Scene2DProps> = ({ data, onSelect, selectedId, co
                </g>
              );
           })}
+
+          {/* [NOVO] Linha de Conexão De -> Para */}
+          {selectionInfo && (
+              <line 
+                x1={selectionInfo.source.x * baseScale}
+                y1={selectionInfo.source.z * baseScale + (DIMENSIONS.RACK_DEPTH * baseScale / 2)}
+                x2={selectionInfo.target.x * baseScale}
+                y2={selectionInfo.target.z * baseScale + (DIMENSIONS.RACK_DEPTH * baseScale / 2)}
+                stroke="#06b6d4"
+                strokeWidth={baseScale * 0.2}
+                strokeDasharray="10,5"
+                markerEnd="url(#arrowhead)"
+                style={{ animation: 'dashDraw 1s linear infinite' }}
+              />
+          )}
+
        </svg>
     </div>
   );
