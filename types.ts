@@ -22,7 +22,7 @@ export interface RawAddressRow {
   PAR_IMPAR: string;
   CODTIPENDER: string;
   TIPOENDERECO: string;
-  DESCRUA?: string; // [NOVO] Coluna adicionada
+  DESCRUA?: string;
 }
 
 export interface RawItemRow {
@@ -38,20 +38,43 @@ export interface RawItemRow {
   SEQENDERECO: string;
 }
 
+// [NOVO] Interface para o arquivo de análise PQR/ABC
+export interface AnalysisRow {
+  NROEMPRESA: string;
+  SEQPRODUTO: string;
+  DESCCOMPLETA: string;
+  VISITAS: string; // Usado para PQR
+  VOLUMES: string;
+  MEDIA_DIA_CX: string;
+  CODRUA: string;
+  NROPREDIO: string;
+  NROAPARTAMENTO: string;
+  NROSALA: string;
+  // Outros campos podem ser adicionados conforme necessidade
+}
+
 export interface MergedData {
   id: string; // SEQENDERECO
   rawAddress: RawAddressRow;
-  rawItem?: RawItemRow;    // Apanha Stock
-  pulmaoItem?: RawItemRow; // Pulmão Stock (New)
+  rawItem?: RawItemRow;    
+  pulmaoItem?: RawItemRow; 
   
+  // Dados de Análise [NOVO]
+  analysis?: {
+    pqrClass: 'P' | 'Q' | 'R' | null;
+    visits: number;
+    seqProduto: string;
+    description: string;
+  };
+
   // Parsed Coordinates for 3D/2D
-  x: number; // Based on RUA
-  y: number; // Based on AP (Calculated height)
-  z: number; // Based on PRED
+  x: number; 
+  y: number; 
+  z: number; 
   
   color: string;
   isTunnel: boolean;
-  sector: string; // [NOVO] Setor extraído da DESCRUA
+  sector: string;
 }
 
 export type ViewMode = '3D_ORBIT' | '3D_WALK' | '2D_PLAN';
@@ -62,10 +85,10 @@ export interface FilterState {
   status: string[];
   type: string[]; // A or P
   search: string;
-  expiryDays: number | null; // Null = No filter, Number = Days until expiration
-  sector: string[]; // [NOVO] Filtro de setor
+  expiryDays: number | null; 
+  sector: string[];
   
   // Receipt Filter
   receiptType: ReceiptFilterType;
-  receiptDate: string; // YYYY-MM-DD for specific date input
+  receiptDate: string; 
 }
