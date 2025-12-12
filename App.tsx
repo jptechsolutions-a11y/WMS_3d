@@ -5,7 +5,7 @@ import { Sidebar } from './components/Sidebar';
 import { Handheld } from './components/Handheld';
 import { processData, parseCSV } from './utils/dataProcessor';
 import { MergedData, ViewMode, FilterState, RawAddressRow, RawItemRow, AddressStatus, AnalysisRow } from './types';
-import { Upload, AlertTriangle } from 'lucide-react';
+import { Upload, AlertTriangle, SplitSquareVertical } from 'lucide-react';
 
 const parseDatePTBR = (dateStr: string): Date | null => {
   if (!dateStr) return null;
@@ -29,11 +29,11 @@ export default function App() {
   const [viewMode, setViewMode] = useState<ViewMode>('3D_ORBIT');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   
-  // colorMode agora aceita 'SUGGESTION_PQR'
   const [colorMode, setColorMode] = useState<'REALISTIC' | 'STATUS' | 'PQR' | 'ABC' | 'SUGGESTION_PQR'>('REALISTIC');
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [teleportPos, setTeleportPos] = useState<{x:number, y:number, z:number} | null>(null);
   const [loading, setLoading] = useState(false);
+  const [isSplitView, setIsSplitView] = useState(false); // [NOVO] Estado para tela dividida
   
   const [files, setFiles] = useState<{ structure?: File, items?: File, pulmao?: File }>({});
 
@@ -42,7 +42,7 @@ export default function App() {
 
   const [filters, setFilters] = useState<FilterState>({
     status: [AddressStatus.Occupied, AddressStatus.Available, AddressStatus.Reserved, AddressStatus.Blocked],
-    type: ['A', 'P'],
+    type: ['A', 'P'], // Default includes picking and pulmao
     search: '',
     expiryDays: null,
     receiptType: 'ALL',
@@ -280,7 +280,6 @@ export default function App() {
   
   const hasPQRData = useMemo(() => data.some(d => d.analysis), [data]);
 
-  // Coleta todas as sugestões para a Sidebar
   const suggestions = useMemo(() => {
      const moves: any[] = [];
      data.forEach(d => {
@@ -290,6 +289,16 @@ export default function App() {
      });
      return moves.sort((a,b) => (a.priority === 'HIGH' ? -1 : 1));
   }, [data]);
+
+  // [NOVO] Toggle de Split View
+  const toggleSplitView = () => {
+    if (!hasPQRData) return alert("Importe a curva PQR primeiro!");
+    setIsSplitView(prev => !prev);
+    // Força modo 2D ao ativar split
+    if (!isSplitView) {
+      setViewMode('2D_PLAN');
+    }
+  };
 
   if (data.length === 0) {
     return (
@@ -331,7 +340,6 @@ export default function App() {
 
   return (
     <div className="flex w-full h-screen bg-[#0f172a] overflow-hidden">
-      {/* Inputs Ocultos */}
       <input type="file" ref={pqrInputRef} accept=".csv" onChange={handlePQRImport} className="hidden" />
       <input type="file" ref={abcInputRef} accept=".csv" className="hidden" />
 
@@ -349,46 +357,85 @@ export default function App() {
         onImportPQR={() => pqrInputRef.current?.click()}
         onImportABC={() => {}}
         hasPQRData={hasPQRData}
-        suggestions={suggestions} // [NOVO] Passar sugestões para Sidebar
+        suggestions={suggestions}
+        // [NOVO] Props de Split e Exportação
+        isSplitView={isSplitView}
+        onToggleSplit={toggleSplitView}
       />
       
-      <main className="flex-1 relative h-full">
-        {viewMode.includes('3D') ? (
-           <Scene3D 
-             data={data} 
-             visibleStatus={filters.status} 
-             visibleTypes={filters.type} 
-             visibleItemIds={visibleItemIds}
-             mode={viewMode === '3D_WALK' ? 'WALK' : 'ORBIT'} 
-             onSelect={handleSelect}
-             selectedId={selectedId}
-             teleportPos={teleportPos}
-             isMobileOpen={isMobileOpen}
-             colorMode={colorMode}
-           />
+      <main className="flex-1 relative h-full flex flex-col">
+        {/* LÓGICA DE VIEW MODE + SPLIT VIEW */}
+        {isSplitView ? (
+          <div className="flex flex-col h-full w-full">
+            {/* TOP: CENÁRIO ATUAL */}
+            <div className="flex-1 relative border-b-2 border-slate-800">
+               <div className="absolute top-2 left-2 z-10 bg-black/50 px-2 py-1 rounded text-[10px] text-white font-bold uppercase backdrop-blur-sm pointer-events-none border border-slate-600">
+                 Cenário Atual (PQR)
+               </div>
+               <Scene2D 
+                 data={filteredDataFor2D}
+                 onSelect={handleSelect}
+                 selectedId={selectedId}
+                 colorMode="PQR" 
+                 allData={data} // Passando tudo para calcular moves
+               />
+            </div>
+            {/* BOTTOM: CENÁRIO SUGERIDO */}
+            <div className="flex-1 relative">
+               <div className="absolute top-2 left-2 z-10 bg-black/50 px-2 py-1 rounded text-[10px] text-white font-bold uppercase backdrop-blur-sm pointer-events-none border border-emerald-600">
+                 <span className="text-emerald-400">Sugestão de Ajuste (Otimizado)</span>
+               </div>
+               <Scene2D 
+                 data={filteredDataFor2D}
+                 onSelect={handleSelect}
+                 selectedId={selectedId}
+                 colorMode="SUGGESTION_PQR" 
+                 allData={data}
+               />
+            </div>
+          </div>
         ) : (
-           <Scene2D 
-             data={filteredDataFor2D}
-             onSelect={handleSelect}
-             selectedId={selectedId}
-             colorMode={colorMode} 
-           />
-        )}
-        
-        {viewMode === '3D_WALK' && (
-           <Handheld 
-             data={data} 
-             onTeleport={handleTeleport}
-             onSelect={handleSelect}
-             isOpen={isMobileOpen}
-             setIsOpen={setIsMobileOpen}
-           />
-        )}
+          /* MODO ÚNICO (PADRÃO) */
+          <>
+            {viewMode.includes('3D') ? (
+              <Scene3D 
+                data={data} 
+                visibleStatus={filters.status} 
+                visibleTypes={filters.type} 
+                visibleItemIds={visibleItemIds}
+                mode={viewMode === '3D_WALK' ? 'WALK' : 'ORBIT'} 
+                onSelect={handleSelect}
+                selectedId={selectedId}
+                teleportPos={teleportPos}
+                isMobileOpen={isMobileOpen}
+                colorMode={colorMode}
+              />
+            ) : (
+              <Scene2D 
+                data={filteredDataFor2D}
+                onSelect={handleSelect}
+                selectedId={selectedId}
+                colorMode={colorMode}
+                allData={data} 
+              />
+            )}
+            
+            {viewMode === '3D_WALK' && (
+              <Handheld 
+                data={data} 
+                onTeleport={handleTeleport}
+                onSelect={handleSelect}
+                isOpen={isMobileOpen}
+                setIsOpen={setIsMobileOpen}
+              />
+            )}
 
-        {viewMode === '3D_WALK' && !isMobileOpen && (
-           <div className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-black/50 text-white px-4 py-2 rounded-full text-sm backdrop-blur-sm pointer-events-none">
-              WASD para Mover • Clique no Celular para Navegar
-           </div>
+            {viewMode === '3D_WALK' && !isMobileOpen && (
+              <div className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-black/50 text-white px-4 py-2 rounded-full text-sm backdrop-blur-sm pointer-events-none">
+                  WASD para Mover • Clique no Celular para Navegar
+              </div>
+            )}
+          </>
         )}
       </main>
     </div>
