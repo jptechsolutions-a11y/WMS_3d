@@ -38,19 +38,26 @@ export interface RawItemRow {
   SEQENDERECO: string;
 }
 
-// [NOVO] Interface para o arquivo de análise PQR/ABC
 export interface AnalysisRow {
   NROEMPRESA: string;
   SEQPRODUTO: string;
   DESCCOMPLETA: string;
-  VISITAS: string; // Usado para PQR
-  VOLUMES: string;
-  MEDIA_DIA_CX: string;
+  VISITAS: string; 
+  VOLUMES: string; // Utilizado para o calculo hibrido
+  MEDIA_DIA_CX: string; // Utilizado para o calculo hibrido
   CODRUA: string;
   NROPREDIO: string;
   NROAPARTAMENTO: string;
   NROSALA: string;
-  // Outros campos podem ser adicionados conforme necessidade
+}
+
+export interface SuggestionMove {
+  fromAddress: string; // "Rua 1 - 10 - 1"
+  toAddress: string;   // "Rua 1 - 02 - 1"
+  productCode: string;
+  productName: string;
+  reason: string;      // "Item Classe P em endereço Classe C"
+  priority: 'HIGH' | 'MEDIUM' | 'LOW';
 }
 
 export interface MergedData {
@@ -59,12 +66,18 @@ export interface MergedData {
   rawItem?: RawItemRow;    
   pulmaoItem?: RawItemRow; 
   
-  // Dados de Análise [NOVO]
+  // Dados de Análise
   analysis?: {
     pqrClass: 'P' | 'Q' | 'R' | null;
     visits: number;
+    volume: number; // Media CX Dia
+    score: number;  // Score combinado
     seqProduto: string;
     description: string;
+    
+    // Sugestão
+    suggestedClass?: 'P' | 'Q' | 'R'; // Qual classe DEVERIA estar aqui
+    suggestionMove?: SuggestionMove; // Se houver movimentação saindo daqui ou vindo pra cá
   };
 
   // Parsed Coordinates for 3D/2D
