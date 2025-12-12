@@ -1,7 +1,7 @@
 import React from 'react';
 import { MergedData, ViewMode, AddressStatus, FilterState, ReceiptFilterType, SuggestionMove } from '../types';
 import { COLORS, STATUS_LABELS } from '../constants';
-import { Settings, Eye, Map, Box, Info, Search, Layers, Palette, CalendarClock, Truck, Tag, X, FileBarChart, TrendingUp, RefreshCw, ArrowRight, Download, SplitSquareVertical } from 'lucide-react';
+import { Settings, Eye, Map, Box, Info, Search, Layers, Palette, CalendarClock, Truck, Tag, X, FileBarChart, TrendingUp, RefreshCw, ArrowRight, Download, SplitSquareVertical, Filter } from 'lucide-react';
 import clsx from 'clsx';
 import logoIcon from '/icon.png';
 
@@ -20,8 +20,8 @@ interface SidebarProps {
   onImportABC: () => void;
   hasPQRData: boolean;
   suggestions?: SuggestionMove[]; 
-  isSplitView: boolean; // [NOVO]
-  onToggleSplit: () => void; // [NOVO]
+  isSplitView: boolean; 
+  onToggleSplit: () => void; 
 }
 
 const SimplePie = ({ percent, color }: { percent: number, color: string }) => {
@@ -58,6 +58,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
     });
   };
 
+  const togglePQR = (cls: string) => {
+     setFilters(prev => {
+         const exists = prev.pqr.includes(cls);
+         if (exists) return { ...prev, pqr: prev.pqr.filter(c => c !== cls) };
+         return { ...prev, pqr: [...prev.pqr, cls] };
+     });
+  };
+
   const handleSectorClick = (sector: string | 'ALL') => {
     if (sector === 'ALL') {
         setFilters(prev => ({ ...prev, sector: availableSectors }));
@@ -89,7 +97,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
       return Math.round((val / total) * 100);
   };
   
-  // [NOVO] Função de Exportação
   const handleExport = () => {
       if (!suggestions || suggestions.length === 0) return alert("Não há sugestões para exportar.");
       
@@ -125,7 +132,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
         </div>
 
-        {/* View Modes (Desabilitado em Split View) */}
+        {/* View Modes */}
         <div className={clsx("p-4 grid grid-cols-3 gap-2 border-b border-slate-800/50", isSplitView && "opacity-50 pointer-events-none")}>
           <button onClick={() => setViewMode('3D_ORBIT')} className={clsx("p-2 text-[10px] uppercase font-bold rounded flex flex-col items-center gap-1 transition-all duration-200", viewMode === '3D_ORBIT' ? "bg-cyan-600 text-white shadow-lg shadow-cyan-900/50" : "bg-slate-800/50 text-slate-400 hover:bg-slate-800 hover:text-cyan-400")}>
             <Eye size={16} /> Orbital
@@ -157,7 +164,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <div>
             <h3 className="text-[10px] font-bold uppercase text-slate-500 mb-3 tracking-wider flex items-center gap-2"><Palette size={10}/> Visualização</h3>
             
-            {/* [NOVO] Botão de Split View */}
              <button 
                   onClick={onToggleSplit}
                   disabled={!hasPQRData} 
@@ -227,7 +233,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </div>
             )}
             
-            {/* [NOVO] Botão de Exportar */}
             {hasPQRData && (
                  <button 
                     onClick={handleExport}
@@ -244,7 +249,42 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <input type="text" placeholder="Buscar Código, Descrição..." value={filters.search} onChange={(e) => setFilters(prev => ({...prev, search: e.target.value}))} className="w-full bg-slate-900 border border-slate-700 rounded-lg pl-9 pr-3 py-2 text-xs text-white focus:border-cyan-500 focus:outline-none transition-all placeholder:text-slate-600 shadow-inner" />
             </div>
 
+            {/* [NOVO] Filtro PQR Explicito */}
+            {hasPQRData && (
+               <div className="mb-4">
+                  <label className="text-[10px] uppercase font-bold text-slate-500 mb-2 flex items-center gap-2"><Filter size={12} /> Classe PQR</label>
+                  <div className="flex gap-2">
+                     {['P', 'Q', 'R', 'N/A'].map(cls => (
+                        <button 
+                           key={cls}
+                           onClick={() => togglePQR(cls)}
+                           className={clsx(
+                              "flex-1 py-1 text-[10px] font-bold rounded border transition-all",
+                              filters.pqr.includes(cls) ? "bg-slate-700 border-slate-500 text-white" : "bg-slate-800/30 border-transparent text-slate-600"
+                           )}
+                           style={{
+                               borderColor: filters.pqr.includes(cls) && cls !== 'N/A' ? (cls === 'P' ? COLORS.PQR_P : cls === 'Q' ? COLORS.PQR_Q : COLORS.PQR_R) : undefined,
+                               color: filters.pqr.includes(cls) && cls !== 'N/A' ? (cls === 'P' ? COLORS.PQR_P : cls === 'Q' ? COLORS.PQR_Q : COLORS.PQR_R) : undefined
+                           }}
+                        >
+                           {cls}
+                        </button>
+                     ))}
+                  </div>
+               </div>
+            )}
+
             <div className="mb-4">
+              <label className="text-[10px] uppercase font-bold text-slate-500 mb-2 flex items-center gap-2"><Layers size={12}/> Tipos</label>
+               {/* ... (Types and Status filters preserved) ... */}
+              <div className="grid grid-cols-2 gap-2">
+                <button onClick={() => toggleType('A')} className={clsx("flex items-center justify-center gap-2 p-2 rounded text-xs font-medium border transition-all", filters.type.includes('A') ? "bg-cyan-600 border-cyan-500 text-white shadow-lg shadow-cyan-900/20" : "bg-slate-800/50 border-transparent text-slate-500 opacity-60 hover:opacity-100")}>
+                  Apanha (A)
+                </button>
+                <button onClick={() => toggleType('P')} className={clsx("flex items-center justify-center gap-2 p-2 rounded text-xs font-medium border transition-all", filters.type.includes('P') ? "bg-cyan-600 border-cyan-500 text-white shadow-lg shadow-cyan-900/20" : "bg-slate-800/50 border-transparent text-slate-500 opacity-60 hover:opacity-100")}>
+                  Pulmão (P)
+                </button>
+              </div>
                <button 
                   onClick={() => setFilters(prev => ({ ...prev, type: ['A'] }))}
                   className="w-full mt-2 text-[9px] text-cyan-500 hover:text-cyan-300 underline decoration-dotted uppercase text-center"
@@ -252,6 +292,40 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   Visualizar Somente Apanha
                </button>
             </div>
+
+             {/* ... (Sector, Expiry, Receipt filters preserved) ... */}
+              {availableSectors.length > 0 && (
+                  <div className="mb-4">
+                      <label className="text-[10px] uppercase font-bold text-slate-500 mb-2 flex items-center gap-2"><Tag size={12} /> Setores</label>
+                      <div className="flex flex-wrap gap-1">
+                          <button 
+                              onClick={() => handleSectorClick('ALL')} 
+                              className={clsx(
+                                  "text-[9px] px-2 py-1 rounded border transition-all uppercase font-bold", 
+                                  isAllSectorsSelected ? "bg-cyan-600 border-cyan-500 text-white" : "bg-slate-800/50 border-transparent text-slate-500 hover:text-slate-300"
+                              )}
+                          >
+                              TODOS
+                          </button>
+                          
+                          {availableSectors.map(sec => {
+                              const isActive = !isAllSectorsSelected && filters.sector.includes(sec);
+                              return (
+                                  <button 
+                                      key={sec} 
+                                      onClick={() => handleSectorClick(sec)} 
+                                      className={clsx(
+                                          "text-[9px] px-2 py-1 rounded border transition-all uppercase", 
+                                          isActive ? "bg-cyan-900/50 border-cyan-500 text-cyan-300 font-bold" : "bg-slate-800/50 border-transparent text-slate-500 hover:text-slate-300"
+                                      )}
+                                  >
+                                      {sec}
+                                  </button>
+                              );
+                          })}
+                      </div>
+                  </div>
+              )}
             
             <div className="space-y-2 mb-6">
               <label className="text-[10px] uppercase font-bold text-slate-500 mb-1 block">Status</label>
@@ -272,7 +346,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
       </div>
 
-      {/* DETAIL DRAWER */}
+      {/* Detail Drawer Preserved */}
       <div 
         className={clsx(
           "absolute top-0 bottom-0 w-80 bg-[#0f172a] border-r border-slate-800 z-20 transition-transform duration-300 ease-in-out shadow-2xl",
