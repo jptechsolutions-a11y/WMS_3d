@@ -29,15 +29,14 @@ export default function App() {
   const [viewMode, setViewMode] = useState<ViewMode>('3D_ORBIT');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   
-  // [ATUALIZADO] colorMode type
-  const [colorMode, setColorMode] = useState<'REALISTIC' | 'STATUS' | 'PQR' | 'ABC'>('REALISTIC');
+  // colorMode agora aceita 'SUGGESTION_PQR'
+  const [colorMode, setColorMode] = useState<'REALISTIC' | 'STATUS' | 'PQR' | 'ABC' | 'SUGGESTION_PQR'>('REALISTIC');
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [teleportPos, setTeleportPos] = useState<{x:number, y:number, z:number} | null>(null);
   const [loading, setLoading] = useState(false);
   
   const [files, setFiles] = useState<{ structure?: File, items?: File, pulmao?: File }>({});
 
-  // Refs ocultos para input de arquivo
   const pqrInputRef = useRef<HTMLInputElement>(null);
   const abcInputRef = useRef<HTMLInputElement>(null);
 
@@ -235,7 +234,6 @@ export default function App() {
     }
   };
 
-  // [NOVO] Handlers para importação secundária de PQR/ABC
   const handlePQRImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
      if (!e.target.files || !e.target.files[0]) return;
      if (data.length === 0) return alert('Carregue a estrutura primeiro!');
@@ -243,26 +241,13 @@ export default function App() {
      setLoading(true);
      try {
        const pqrRows = await parseCSV<AnalysisRow>(e.target.files[0]);
-       
-       // Reprocessar dados existentes mesclando com PQR
-       // Precisamos dos CSVs originais? Na verdade podemos re-extrair do estado 'data', 
-       // mas o processData espera raw rows.
-       // Solução simplificada: Armazenar os RawRows originais seria ideal, 
-       // mas para simplificar vamos assumir que o usuário fará o fluxo novamente OU 
-       // reconstruímos a lista.
-       // MELHOR: Apenas atualizar o estado 'data' iterando sobre ele e adicionando info.
-       
-       // Como o calculatePQR está no dataProcessor, vamos reutilizar a função.
-       // Mas para isso precisamos dos raw rows. Vamos salvar no state 'data' os rawItems?
-       // O MergedData JÁ TEM rawAddress e rawItem!
-       
        const addresses = data.map(d => d.rawAddress);
        const items = data.map(d => d.rawItem).filter(Boolean) as RawItemRow[];
        const pulmao = data.map(d => d.pulmaoItem).filter(Boolean) as RawItemRow[];
        
        const merged = processData(addresses, items, pulmao, pqrRows);
        setData(merged);
-       setColorMode('PQR'); // Ativa automaticamente a visão PQR
+       setColorMode('PQR'); 
        alert('Curva PQR importada com sucesso!');
 
      } catch(err) {
@@ -286,7 +271,6 @@ export default function App() {
     setTimeout(() => setTeleportPos(null), 100);
   };
 
-  // [CORREÇÃO] Filtragem para 2D agora considera se estamos no modo Apanha somente
   const filteredDataFor2D = data.filter(d => 
     filters.type.includes(d.rawAddress.ESP) && 
     filters.status.includes(d.rawAddress.STATUS) &&
@@ -295,6 +279,17 @@ export default function App() {
   );
   
   const hasPQRData = useMemo(() => data.some(d => d.analysis), [data]);
+
+  // Coleta todas as sugestões para a Sidebar
+  const suggestions = useMemo(() => {
+     const moves: any[] = [];
+     data.forEach(d => {
+        if (d.analysis?.suggestionMove) {
+           moves.push(d.analysis.suggestionMove);
+        }
+     });
+     return moves.sort((a,b) => (a.priority === 'HIGH' ? -1 : 1));
+  }, [data]);
 
   if (data.length === 0) {
     return (
@@ -354,6 +349,7 @@ export default function App() {
         onImportPQR={() => pqrInputRef.current?.click()}
         onImportABC={() => {}}
         hasPQRData={hasPQRData}
+        suggestions={suggestions} // [NOVO] Passar sugestões para Sidebar
       />
       
       <main className="flex-1 relative h-full">
@@ -375,7 +371,7 @@ export default function App() {
              data={filteredDataFor2D}
              onSelect={handleSelect}
              selectedId={selectedId}
-             colorMode={colorMode} // [NOVO]
+             colorMode={colorMode} 
            />
         )}
         
