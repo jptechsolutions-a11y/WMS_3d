@@ -35,7 +35,7 @@ interface SceneProps {
   selectedId: string | null;
   teleportPos: { x: number, y: number, z: number } | null;
   isMobileOpen: boolean;
-  colorMode: 'REALISTIC' | 'STATUS' | 'PQR' | 'ABC'; // [ATUALIZADO]
+  colorMode: 'REALISTIC' | 'STATUS' | 'PQR' | 'ABC' | 'SUGGESTION_PQR'; // [ATUALIZADO]
 }
 
 // ... (Geometry generators unchanged) ...
@@ -208,7 +208,7 @@ const RackSystem = ({
     visibleItemIds: Set<string>,
     onSelect: (d: MergedData) => void, 
     selectedId: string | null,
-    colorMode: 'REALISTIC' | 'STATUS' | 'PQR' | 'ABC'
+    colorMode: 'REALISTIC' | 'STATUS' | 'PQR' | 'ABC' | 'SUGGESTION_PQR'
 }) => {
   const meshRefBoxes = useRef<THREE.InstancedMesh>(null);
   const meshRefPallets = useRef<THREE.InstancedMesh>(null);
@@ -219,7 +219,7 @@ const RackSystem = ({
   const [hoveredInstance, setHoveredInstance] = useState<number | null>(null);
 
   const { columns, itemMeta, maxBeams, uprightInstances } = useMemo(() => {
-    // ... (Existing column logic preserved for brevity) ...
+    // ... (Existing column logic preserved) ...
     const stackMap = new Map<string, MergedData[]>();
     const bayMap = new Map<string, { x: number, z: number, maxLevel: number, minLevel: number, blockedLevels: Set<number> }>();
 
@@ -333,8 +333,13 @@ const RackSystem = ({
             color.set(COLORS.SELECTED);
           } else if (i === hoveredInstance) {
             color.set(COLORS.HOVER);
+          } else if (colorMode === 'SUGGESTION_PQR') {
+             // [NOVO] Modo Sugestão 3D
+             if (item.analysis?.suggestedClass === 'P') color.set(COLORS.PQR_P);
+             else if (item.analysis?.suggestedClass === 'Q') color.set(COLORS.PQR_Q);
+             else if (item.analysis?.suggestedClass === 'R') color.set(COLORS.PQR_R);
+             else color.set(item.color);
           } else if (colorMode === 'PQR') {
-             // [NOVO] Lógica PQR 3D
              if (item.analysis?.pqrClass === 'P') color.set(COLORS.PQR_P);
              else if (item.analysis?.pqrClass === 'Q') color.set(COLORS.PQR_Q);
              else if (item.analysis?.pqrClass === 'R') color.set(COLORS.PQR_R);
@@ -360,8 +365,6 @@ const RackSystem = ({
     meshRefPallets.current.instanceMatrix.needsUpdate = true;
     if (meshRefPallets.current.instanceColor) meshRefPallets.current.instanceColor.needsUpdate = true;
 
-
-    // --- Structure Generation ---
     // ... (Structure generation unchanged) ...
     let beamIdx = 0;
     let upIdx = 0;
@@ -465,17 +468,25 @@ const RackSystem = ({
       {hoveredInstance !== null && data[hoveredInstance] && visibleStatus.includes(data[hoveredInstance].rawAddress.STATUS) && visibleTypes.includes(data[hoveredInstance].rawAddress.ESP) && visibleItemIds && visibleItemIds.has(data[hoveredInstance].id) && (
          <Html position={[data[hoveredInstance].x, data[hoveredInstance].y + 1, data[hoveredInstance].z]} distanceFactor={15}>
             <div className="bg-slate-900/95 text-white text-xs p-3 rounded border border-blue-500 shadow-xl pointer-events-none whitespace-nowrap z-50 min-w-[200px]">
+               {/* ... (Tooltip Content) ... */}
                <div className="font-bold text-orange-400 text-sm mb-1 border-b border-slate-700 pb-1">
                   {data[hoveredInstance].rawAddress.RUA} - {data[hoveredInstance].rawAddress.PRED} - {data[hoveredInstance].rawAddress.AP} - {data[hoveredInstance].rawAddress.SL}
                </div>
                
-               {/* [NOVO] Badge PQR no Tooltip */}
+               {/* Badge PQR */}
                {data[hoveredInstance].analysis?.pqrClass && (
                  <div className="absolute top-2 right-2 px-1 rounded bg-slate-800 border border-slate-600 font-bold text-[9px]" style={{
                      color: data[hoveredInstance].analysis.pqrClass === 'P' ? COLORS.PQR_P : 
                             data[hoveredInstance].analysis.pqrClass === 'Q' ? COLORS.PQR_Q : COLORS.PQR_R
                  }}>
                     {data[hoveredInstance].analysis.pqrClass}
+                 </div>
+               )}
+               
+               {/* Badge Sugestão */}
+               {colorMode === 'SUGGESTION_PQR' && data[hoveredInstance].analysis?.suggestedClass && (
+                 <div className="absolute top-6 right-2 px-1 rounded bg-emerald-900 border border-emerald-600 font-bold text-[9px] text-emerald-400">
+                    Sug: {data[hoveredInstance].analysis.suggestedClass}
                  </div>
                )}
 
@@ -501,7 +512,7 @@ const RackSystem = ({
   );
 };
 
-// ... (WalkController and Scene3D export logic largely unchanged but includes colorMode prop) ...
+// ... (WalkController and Scene3D export logic largely unchanged) ...
 
 function WalkController({ teleportPos, isMobileOpen }: { teleportPos: {x:number, y:number, z:number}|null, isMobileOpen: boolean }) {
   const [, getKeys] = useKeyboardControls();
