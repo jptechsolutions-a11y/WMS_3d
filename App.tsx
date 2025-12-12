@@ -33,7 +33,7 @@ export default function App() {
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [teleportPos, setTeleportPos] = useState<{x:number, y:number, z:number} | null>(null);
   const [loading, setLoading] = useState(false);
-  const [isSplitView, setIsSplitView] = useState(false); // [NOVO] Estado para tela dividida
+  const [isSplitView, setIsSplitView] = useState(false); 
   
   const [files, setFiles] = useState<{ structure?: File, items?: File, pulmao?: File }>({});
 
@@ -42,12 +42,13 @@ export default function App() {
 
   const [filters, setFilters] = useState<FilterState>({
     status: [AddressStatus.Occupied, AddressStatus.Available, AddressStatus.Reserved, AddressStatus.Blocked],
-    type: ['A', 'P'], // Default includes picking and pulmao
+    type: ['A', 'P'], 
     search: '',
     expiryDays: null,
     receiptType: 'ALL',
     receiptDate: new Date().toISOString().split('T')[0],
-    sector: [] 
+    sector: [],
+    pqr: ['P', 'Q', 'R', 'N/A'] // [NOVO] Default todos selecionados
   });
 
   const availableSectors = useMemo(() => {
@@ -95,12 +96,17 @@ export default function App() {
     const hasExpiry = filters.expiryDays !== null;
     const hasReceipt = filters.receiptType !== 'ALL';
     const allowedSectors = new Set(filters.sector);
+    const allowedPQR = new Set(filters.pqr); // [NOVO]
     
     const now = new Date();
     now.setHours(0,0,0,0);
 
     data.forEach(d => {
        if (!allowedSectors.has(d.sector)) return;
+
+       // [NOVO] Lógica Filtro PQR
+       const itemPQR = d.analysis?.pqrClass || 'N/A';
+       if (!allowedPQR.has(itemPQR)) return;
 
        let matches = true;
        const relevantItem = d.rawAddress.ESP === 'P' ? d.pulmaoItem : d.rawItem;
@@ -176,16 +182,15 @@ export default function App() {
     return ids;
   }, [data, filters]);
 
+  // ... (Stats and other handlers preserved) ...
   const stats = useMemo(() => {
     const s = {
       totalApanha: 0, validApanha: 0, occupiedApanha: 0,
       totalPulmao: 0, validPulmao: 0, occupiedPulmao: 0,
       total: 0, occupied: 0, available: 0, reserved: 0, blocked: 0 
     };
-
     data.forEach(d => {
       if (!filters.sector.includes(d.sector)) return;
-
       const isTypeVisible = filters.type.includes(d.rawAddress.ESP);
       const isStatusVisible = filters.status.includes(d.rawAddress.STATUS);
       const isSearchVisible = (!filters.search && filters.expiryDays === null && filters.receiptType === 'ALL') ? true : visibleItemIds.has(d.id);
@@ -197,7 +202,6 @@ export default function App() {
           if (d.rawAddress.STATUS === AddressStatus.Reserved) s.reserved++;
           if (d.rawAddress.STATUS === AddressStatus.Blocked) s.blocked++;
       }
-
       if (d.rawAddress.ESP === 'A') {
           s.totalApanha++;
           if (d.rawAddress.STATUS !== AddressStatus.Blocked) s.validApanha++;
@@ -290,11 +294,9 @@ export default function App() {
      return moves.sort((a,b) => (a.priority === 'HIGH' ? -1 : 1));
   }, [data]);
 
-  // [NOVO] Toggle de Split View
   const toggleSplitView = () => {
     if (!hasPQRData) return alert("Importe a curva PQR primeiro!");
     setIsSplitView(prev => !prev);
-    // Força modo 2D ao ativar split
     if (!isSplitView) {
       setViewMode('2D_PLAN');
     }
@@ -358,16 +360,13 @@ export default function App() {
         onImportABC={() => {}}
         hasPQRData={hasPQRData}
         suggestions={suggestions}
-        // [NOVO] Props de Split e Exportação
         isSplitView={isSplitView}
         onToggleSplit={toggleSplitView}
       />
       
       <main className="flex-1 relative h-full flex flex-col">
-        {/* LÓGICA DE VIEW MODE + SPLIT VIEW */}
         {isSplitView ? (
           <div className="flex flex-col h-full w-full">
-            {/* TOP: CENÁRIO ATUAL */}
             <div className="flex-1 relative border-b-2 border-slate-800">
                <div className="absolute top-2 left-2 z-10 bg-black/50 px-2 py-1 rounded text-[10px] text-white font-bold uppercase backdrop-blur-sm pointer-events-none border border-slate-600">
                  Cenário Atual (PQR)
@@ -377,10 +376,9 @@ export default function App() {
                  onSelect={handleSelect}
                  selectedId={selectedId}
                  colorMode="PQR" 
-                 allData={data} // Passando tudo para calcular moves
+                 allData={data} 
                />
             </div>
-            {/* BOTTOM: CENÁRIO SUGERIDO */}
             <div className="flex-1 relative">
                <div className="absolute top-2 left-2 z-10 bg-black/50 px-2 py-1 rounded text-[10px] text-white font-bold uppercase backdrop-blur-sm pointer-events-none border border-emerald-600">
                  <span className="text-emerald-400">Sugestão de Ajuste (Otimizado)</span>
@@ -395,7 +393,6 @@ export default function App() {
             </div>
           </div>
         ) : (
-          /* MODO ÚNICO (PADRÃO) */
           <>
             {viewMode.includes('3D') ? (
               <Scene3D 
