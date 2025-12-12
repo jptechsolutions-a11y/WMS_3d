@@ -7,7 +7,7 @@ interface Scene2DProps {
   data: MergedData[];
   onSelect: (data: MergedData) => void;
   selectedId: string | null;
-  colorMode: 'REALISTIC' | 'STATUS' | 'PQR' | 'ABC'; // [NOVO]
+  colorMode: 'REALISTIC' | 'STATUS' | 'PQR' | 'ABC' | 'SUGGESTION_PQR'; // [ATUALIZADO]
 }
 
 export const Scene2D: React.FC<Scene2DProps> = ({ data, onSelect, selectedId, colorMode }) => {
@@ -52,6 +52,7 @@ export const Scene2D: React.FC<Scene2DProps> = ({ data, onSelect, selectedId, co
     };
   }, [data]);
 
+  // ... (Zoom logic preserved) ...
   const handleWheel = (e: React.WheelEvent) => {
     e.preventDefault();
     const scaleFactor = 1.1;
@@ -83,15 +84,21 @@ export const Scene2D: React.FC<Scene2DProps> = ({ data, onSelect, selectedId, co
 
   const baseScale = 15; 
 
-  // [NOVO] Lógica de Cor para PQR
+  // [ATUALIZADO] Lógica de Cor
   const getItemColor = (item: MergedData) => {
+    if (colorMode === 'SUGGESTION_PQR' && item.analysis?.suggestedClass) {
+       // Pinta com a cor da classe SUGERIDA
+       if (item.analysis.suggestedClass === 'P') return COLORS.PQR_P;
+       if (item.analysis.suggestedClass === 'Q') return COLORS.PQR_Q;
+       if (item.analysis.suggestedClass === 'R') return COLORS.PQR_R;
+    }
+    
     if (colorMode === 'PQR' && item.analysis?.pqrClass) {
        if (item.analysis.pqrClass === 'P') return COLORS.PQR_P;
        if (item.analysis.pqrClass === 'Q') return COLORS.PQR_Q;
        if (item.analysis.pqrClass === 'R') return COLORS.PQR_R;
        return COLORS.PQR_NULL;
     }
-    // Fallback para cor padrão ou modo Status/Realistic
     return item.color;
   };
 
@@ -106,9 +113,12 @@ export const Scene2D: React.FC<Scene2DProps> = ({ data, onSelect, selectedId, co
         onWheel={handleWheel}
     >
        <div className="absolute top-4 left-4 text-slate-500 font-mono text-sm z-10 pointer-events-none select-none">
-         TOP DOWN VIEW • {colorMode === 'PQR' ? <span className="text-purple-600 font-bold">MODO HEATMAP PQR</span> : 'Modo Padrão'}
+         TOP DOWN VIEW • 
+         {colorMode === 'PQR' && <span className="text-purple-600 font-bold ml-2">ATUAL</span>}
+         {colorMode === 'SUGGESTION_PQR' && <span className="text-emerald-600 font-bold ml-2">SUGESTÃO OTIMIZADA</span>}
        </div>
 
+       {/* ... (Zoom Controls Preserved) ... */}
        <div className="absolute bottom-8 right-8 flex flex-col gap-2 z-10">
           <button onClick={() => setTransform(p => ({ ...p, k: p.k * 1.2 }))} className="p-2 bg-white shadow rounded hover:bg-slate-50"><ZoomIn size={20} className="text-slate-600"/></button>
           <button onClick={() => setTransform(p => ({ ...p, k: p.k / 1.2 }))} className="p-2 bg-white shadow rounded hover:bg-slate-50"><ZoomOut size={20} className="text-slate-600"/></button>
@@ -160,7 +170,7 @@ export const Scene2D: React.FC<Scene2DProps> = ({ data, onSelect, selectedId, co
              const w = 1.6 * baseScale;
              const h = DIMENSIONS.RACK_DEPTH * baseScale;
              const isSelected = selectedId === item.id;
-             const fillColor = getItemColor(item); // [NOVO]
+             const fillColor = getItemColor(item); 
 
              return (
                <g 
