@@ -1,15 +1,16 @@
 import React, { useMemo, useState, useRef, useEffect } from 'react';
 import { MergedData } from '../types';
-import { DIMENSIONS } from '../constants';
+import { DIMENSIONS, COLORS } from '../constants';
 import { ZoomIn, ZoomOut, Move, LocateFixed } from 'lucide-react';
 
 interface Scene2DProps {
   data: MergedData[];
   onSelect: (data: MergedData) => void;
   selectedId: string | null;
+  colorMode: 'REALISTIC' | 'STATUS' | 'PQR' | 'ABC'; // [NOVO]
 }
 
-export const Scene2D: React.FC<Scene2DProps> = ({ data, onSelect, selectedId }) => {
+export const Scene2D: React.FC<Scene2DProps> = ({ data, onSelect, selectedId, colorMode }) => {
   const [transform, setTransform] = useState({ x: 0, y: 0, k: 1 }); 
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -18,7 +19,7 @@ export const Scene2D: React.FC<Scene2DProps> = ({ data, onSelect, selectedId }) 
 
   const { bounds, streetLabels } = useMemo(() => {
     let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
-    const streets = new Map<string, { sumX: number, maxZ: number, count: number }>(); // use maxZ for Start
+    const streets = new Map<string, { sumX: number, maxZ: number, count: number }>(); 
 
     data.forEach(d => {
       if (d.x < minX) minX = d.x;
@@ -31,7 +32,7 @@ export const Scene2D: React.FC<Scene2DProps> = ({ data, onSelect, selectedId }) 
       }
       const s = streets.get(d.rawAddress.RUA)!;
       s.sumX += d.x;
-      if (d.z > s.maxZ) s.maxZ = d.z; // Start of street is at MAX Z (0) now
+      if (d.z > s.maxZ) s.maxZ = d.z; 
       s.count++;
     });
 
@@ -42,7 +43,7 @@ export const Scene2D: React.FC<Scene2DProps> = ({ data, onSelect, selectedId }) 
     const labels = Array.from(streets.entries()).map(([name, val]) => ({
         name,
         x: val.sumX / val.count,
-        z: val.maxZ + 2 // Place label "below" start
+        z: val.maxZ + 2 
     }));
 
     return { 
@@ -82,6 +83,18 @@ export const Scene2D: React.FC<Scene2DProps> = ({ data, onSelect, selectedId }) 
 
   const baseScale = 15; 
 
+  // [NOVO] Lógica de Cor para PQR
+  const getItemColor = (item: MergedData) => {
+    if (colorMode === 'PQR' && item.analysis?.pqrClass) {
+       if (item.analysis.pqrClass === 'P') return COLORS.PQR_P;
+       if (item.analysis.pqrClass === 'Q') return COLORS.PQR_Q;
+       if (item.analysis.pqrClass === 'R') return COLORS.PQR_R;
+       return COLORS.PQR_NULL;
+    }
+    // Fallback para cor padrão ou modo Status/Realistic
+    return item.color;
+  };
+
   return (
     <div 
         ref={containerRef}
@@ -93,7 +106,7 @@ export const Scene2D: React.FC<Scene2DProps> = ({ data, onSelect, selectedId }) 
         onWheel={handleWheel}
     >
        <div className="absolute top-4 left-4 text-slate-500 font-mono text-sm z-10 pointer-events-none select-none">
-         TOP DOWN VIEW (PLANTA) • Scroll p/ Zoom • Arraste p/ Mover
+         TOP DOWN VIEW • {colorMode === 'PQR' ? <span className="text-purple-600 font-bold">MODO HEATMAP PQR</span> : 'Modo Padrão'}
        </div>
 
        <div className="absolute bottom-8 right-8 flex flex-col gap-2 z-10">
@@ -147,6 +160,7 @@ export const Scene2D: React.FC<Scene2DProps> = ({ data, onSelect, selectedId }) 
              const w = 1.6 * baseScale;
              const h = DIMENSIONS.RACK_DEPTH * baseScale;
              const isSelected = selectedId === item.id;
+             const fillColor = getItemColor(item); // [NOVO]
 
              return (
                <g 
@@ -159,7 +173,7 @@ export const Scene2D: React.FC<Scene2DProps> = ({ data, onSelect, selectedId }) 
                     y={sy}
                     width={w}
                     height={h}
-                    fill={item.color}
+                    fill={fillColor}
                     stroke={isSelected ? 'black' : '#fff'}
                     strokeWidth={isSelected ? 2 : 1}
                     rx={2}
@@ -169,7 +183,7 @@ export const Scene2D: React.FC<Scene2DProps> = ({ data, onSelect, selectedId }) 
                         x={sx} 
                         y={sy + h/2} 
                         fontSize={baseScale * 0.4} 
-                        fill={isSelected || item.color === '#22c55e' ? 'black' : 'white'} 
+                        fill={isSelected || fillColor === '#22c55e' || fillColor === '#eab308' ? 'black' : 'white'} 
                         textAnchor="middle" 
                         dominantBaseline="middle"
                         pointerEvents="none"
@@ -177,7 +191,6 @@ export const Scene2D: React.FC<Scene2DProps> = ({ data, onSelect, selectedId }) 
                         {item.rawAddress.SL}
                      </text>
                  )}
-                 <title>{`Rua: ${item.rawAddress.RUA} | P: ${item.rawAddress.PRED} | AP: ${item.rawAddress.AP} | Sala: ${item.rawAddress.SL}`}</title>
                </g>
              );
           })}
