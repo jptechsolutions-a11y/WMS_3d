@@ -35,11 +35,10 @@ interface SceneProps {
   selectedId: string | null;
   teleportPos: { x: number, y: number, z: number } | null;
   isMobileOpen: boolean;
-  colorMode: 'REALISTIC' | 'STATUS';
+  colorMode: 'REALISTIC' | 'STATUS' | 'PQR' | 'ABC'; // [ATUALIZADO]
 }
 
-// ---- Geometry Generators ----
-
+// ... (Geometry generators unchanged) ...
 const mergeGeometries = (geometries: THREE.BufferGeometry[]): THREE.BufferGeometry => {
   let totalPos = 0, totalNorm = 0, totalUV = 0, totalInd = 0;
   geometries.forEach(g => {
@@ -140,11 +139,9 @@ const StreetLabels = ({ data }: { data: MergedData[] }) => {
     data.forEach(d => {
       const rua = d.rawAddress.RUA;
       if (!map.has(rua)) {
-        // Inicializa com setor
         map.set(rua, { maxZ: d.z, x: 0, sector: d.sector || '' }); 
       } else {
         const entry = map.get(rua)!;
-        // Pega o MAIOR valor de Z (o início da rua)
         entry.maxZ = Math.max(entry.maxZ, d.z);
       }
     });
@@ -156,7 +153,7 @@ const StreetLabels = ({ data }: { data: MergedData[] }) => {
             name,
             sector: val.sector,
             x: centerX,
-            z: val.maxZ + 4 // Posiciona na frente da rua
+            z: val.maxZ + 4 
         };
     });
   }, [data]);
@@ -169,21 +166,17 @@ const StreetLabels = ({ data }: { data: MergedData[] }) => {
              <cylinderGeometry args={[0.05, 0.05, 3]} />
              <meshStandardMaterial color="#334155" />
            </mesh>
-           {/* Placa ligeiramente maior para caber o setor */}
            <mesh position={[0, 0, 0]}>
              <boxGeometry args={[3, 1.2, 0.1]} />
              <meshStandardMaterial color="#0f172a" />
            </mesh>
-           {/* Nome da Rua */}
            <Text position={[0, 0.25, 0.06]} fontSize={0.5} color="#06b6d4" anchorX="center" anchorY="middle">
              {s.name}
            </Text>
-           {/* Nome do Setor (Embaixo) */}
            <Text position={[0, -0.25, 0.06]} fontSize={0.25} color="#94a3b8" anchorX="center" anchorY="middle">
              {s.sector}
            </Text>
 
-           {/* Verso */}
            <Text position={[0, 0.25, -0.06]} rotation={[0, Math.PI, 0]} fontSize={0.5} color="#06b6d4" anchorX="center" anchorY="middle">
              {s.name}
            </Text>
@@ -207,7 +200,7 @@ const RackSystem = ({
     visibleItemIds = new Set(), 
     onSelect, 
     selectedId, 
-    colorMode = 'REALISTIC' 
+    colorMode
 }: { 
     data: MergedData[], 
     visibleStatus: string[], 
@@ -215,7 +208,7 @@ const RackSystem = ({
     visibleItemIds: Set<string>,
     onSelect: (d: MergedData) => void, 
     selectedId: string | null,
-    colorMode: 'REALISTIC' | 'STATUS'
+    colorMode: 'REALISTIC' | 'STATUS' | 'PQR' | 'ABC'
 }) => {
   const meshRefBoxes = useRef<THREE.InstancedMesh>(null);
   const meshRefPallets = useRef<THREE.InstancedMesh>(null);
@@ -226,6 +219,7 @@ const RackSystem = ({
   const [hoveredInstance, setHoveredInstance] = useState<number | null>(null);
 
   const { columns, itemMeta, maxBeams, uprightInstances } = useMemo(() => {
+    // ... (Existing column logic preserved for brevity) ...
     const stackMap = new Map<string, MergedData[]>();
     const bayMap = new Map<string, { x: number, z: number, maxLevel: number, minLevel: number, blockedLevels: Set<number> }>();
 
@@ -339,6 +333,12 @@ const RackSystem = ({
             color.set(COLORS.SELECTED);
           } else if (i === hoveredInstance) {
             color.set(COLORS.HOVER);
+          } else if (colorMode === 'PQR') {
+             // [NOVO] Lógica PQR 3D
+             if (item.analysis?.pqrClass === 'P') color.set(COLORS.PQR_P);
+             else if (item.analysis?.pqrClass === 'Q') color.set(COLORS.PQR_Q);
+             else if (item.analysis?.pqrClass === 'R') color.set(COLORS.PQR_R);
+             else color.set(COLORS.PQR_NULL);
           } else if (colorMode === 'STATUS') {
             color.set(COLORS[item.rawAddress.STATUS] || COLORS.DEFAULT);
           } else {
@@ -362,6 +362,7 @@ const RackSystem = ({
 
 
     // --- Structure Generation ---
+    // ... (Structure generation unchanged) ...
     let beamIdx = 0;
     let upIdx = 0;
     const depthHalf = DIMENSIONS.RACK_DEPTH / 2;
@@ -468,11 +469,20 @@ const RackSystem = ({
                   {data[hoveredInstance].rawAddress.RUA} - {data[hoveredInstance].rawAddress.PRED} - {data[hoveredInstance].rawAddress.AP} - {data[hoveredInstance].rawAddress.SL}
                </div>
                
+               {/* [NOVO] Badge PQR no Tooltip */}
+               {data[hoveredInstance].analysis?.pqrClass && (
+                 <div className="absolute top-2 right-2 px-1 rounded bg-slate-800 border border-slate-600 font-bold text-[9px]" style={{
+                     color: data[hoveredInstance].analysis.pqrClass === 'P' ? COLORS.PQR_P : 
+                            data[hoveredInstance].analysis.pqrClass === 'Q' ? COLORS.PQR_Q : COLORS.PQR_R
+                 }}>
+                    {data[hoveredInstance].analysis.pqrClass}
+                 </div>
+               )}
+
                {itemMeta.get(data[hoveredInstance].id)?.span > 1 && (
                  <div className="text-green-400 text-[10px] mb-2 italic font-bold">Pallet Full</div>
                )}
 
-               {/* Show details for Picking Stock if exists */}
                {data[hoveredInstance].rawItem && (
                    <div className="mb-2">
                        <div className="text-[10px] text-blue-400 font-bold uppercase">Apanha</div>
@@ -481,16 +491,6 @@ const RackSystem = ({
                    </div>
                )}
 
-               {/* Show details for Buffer Stock if exists */}
-               {data[hoveredInstance].pulmaoItem && (
-                   <div>
-                       <div className="text-[10px] text-purple-400 font-bold uppercase">Pulmão</div>
-                       <div className="font-semibold">{data[hoveredInstance].pulmaoItem.DESCRICAO}</div>
-                       <div className="text-slate-400 text-[10px]">Cód: {data[hoveredInstance].pulmaoItem.CODIGO}</div>
-                   </div>
-               )}
-
-               {/* Fallback if empty */}
                {!data[hoveredInstance].rawItem && !data[hoveredInstance].pulmaoItem && (
                    <div className="text-slate-500 italic">Posição Vazia</div>
                )}
@@ -501,17 +501,16 @@ const RackSystem = ({
   );
 };
 
+// ... (WalkController and Scene3D export logic largely unchanged but includes colorMode prop) ...
+
 function WalkController({ teleportPos, isMobileOpen }: { teleportPos: {x:number, y:number, z:number}|null, isMobileOpen: boolean }) {
   const [, getKeys] = useKeyboardControls();
   const { camera } = useThree();
   const speed = 10; 
   
-  // UseEffect para teleporte inicial (set)
   useEffect(() => {
     if (teleportPos) {
-       // Usa a posição exata recebida, que já deve estar correta (ex: chão + altura do olho)
        camera.position.set(teleportPos.x, teleportPos.y, teleportPos.z); 
-       // Olha para "frente" da posição (assumindo eixo Z negativo como frente do rack)
        camera.lookAt(teleportPos.x, teleportPos.y, teleportPos.z - 5);
     }
   }, [teleportPos, camera]);
@@ -534,7 +533,7 @@ function WalkController({ teleportPos, isMobileOpen }: { teleportPos: {x:number,
 
     direction.y = 0;
     camera.position.add(direction);
-    camera.position.y = 1.7; // Força altura do "olho"
+    camera.position.y = 1.7; 
   });
 
   return null;
@@ -544,7 +543,6 @@ export const Scene3D: React.FC<SceneProps> = ({ data, visibleStatus, visibleType
   return (
     <div id="canvas-container" className="w-full h-full bg-[#0f172a] relative">
       
-      {/* Mira (Crosshair) apenas no modo WALK */}
       {mode === 'WALK' && !isMobileOpen && (
           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-1.5 h-1.5 bg-white/50 rounded-full z-10 pointer-events-none shadow-[0_0_2px_rgba(255,255,255,0.8)]" />
       )}
@@ -574,7 +572,6 @@ export const Scene3D: React.FC<SceneProps> = ({ data, visibleStatus, visibleType
           )}
 
           <group>
-              {/* Floor */}
               <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.05, 0]} receiveShadow>
                   <planeGeometry args={[5000, 5000]} />
                   <meshStandardMaterial color="#1e293b" roughness={0.8} />
