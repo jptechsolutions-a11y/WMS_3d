@@ -50,7 +50,13 @@ export const COLORS = {
   TUNNEL_HIGHLIGHT: '#06b6d4',
   HOVER: '#ffffff',
   SELECTED: '#06b6d4', 
-  TEXT_LABEL: '#000000'
+  TEXT_LABEL: '#000000',
+
+  // [NOVO] Cores PQR (Mapa de Calor)
+  PQR_P: '#ef4444', // Vermelho (Alta frequência - Hot)
+  PQR_Q: '#eab308', // Amarelo (Média)
+  PQR_R: '#22c55e', // Verde (Baixa - Cold)
+  PQR_NULL: '#334155' // Slate 700 (Sem dados)
 };
 
 export const STATUS_LABELS = {
