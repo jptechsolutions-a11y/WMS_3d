@@ -43,8 +43,8 @@ export interface AnalysisRow {
   SEQPRODUTO: string;
   DESCCOMPLETA: string;
   VISITAS: string; 
-  VOLUMES: string; // Utilizado para o calculo hibrido
-  MEDIA_DIA_CX: string; // Utilizado para o calculo hibrido
+  VOLUMES: string; 
+  MEDIA_DIA_CX: string; 
   CODRUA: string;
   NROPREDIO: string;
   NROAPARTAMENTO: string;
@@ -52,11 +52,11 @@ export interface AnalysisRow {
 }
 
 export interface SuggestionMove {
-  fromAddress: string; // "Rua 1 - 10 - 1"
-  toAddress: string;   // "Rua 1 - 02 - 1"
+  fromAddress: string; 
+  toAddress: string;   
   productCode: string;
   productName: string;
-  reason: string;      // "Item Classe P em endereço Classe C"
+  reason: string;      
   priority: 'HIGH' | 'MEDIUM' | 'LOW';
 }
 
@@ -70,17 +70,16 @@ export interface MergedData {
   analysis?: {
     pqrClass: 'P' | 'Q' | 'R' | null;
     visits: number;
-    volume: number; // Media CX Dia
-    score: number;  // Score combinado
+    volume: number; 
+    score: number;  
     seqProduto: string;
     description: string;
     
     // Sugestão
-    suggestedClass?: 'P' | 'Q' | 'R'; // Qual classe DEVERIA estar aqui
-    suggestionMove?: SuggestionMove; // Se houver movimentação saindo daqui ou vindo pra cá
+    suggestedClass?: 'P' | 'Q' | 'R'; 
+    suggestionMove?: SuggestionMove; 
   };
 
-  // Parsed Coordinates for 3D/2D
   x: number; 
   y: number; 
   z: number; 
@@ -96,11 +95,14 @@ export type ReceiptFilterType = 'ALL' | 'YESTERDAY' | 'BEFORE_YESTERDAY' | 'THIS
 
 export interface FilterState {
   status: string[];
-  type: string[]; // A or P
+  type: string[]; 
   search: string;
   expiryDays: number | null; 
   sector: string[];
   
+  // [NOVO] Filtro PQR
+  pqr: string[]; // ['P', 'Q', 'R', 'N/A']
+
   // Receipt Filter
   receiptType: ReceiptFilterType;
   receiptDate: string; 
