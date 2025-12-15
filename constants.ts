@@ -50,7 +50,13 @@ export const COLORS = {
   TUNNEL_HIGHLIGHT: '#06b6d4',
   HOVER: '#ffffff',
   SELECTED: '#06b6d4', 
-  TEXT_LABEL: '#000000'
+  TEXT_LABEL: '#000000',
+
+  // Heatmap Colors (PQR / ABC)
+  HEATMAP_P: '#ef4444', // Red (High Rotation)
+  HEATMAP_Q: '#eab308', // Yellow (Medium)
+  HEATMAP_R: '#22c55e', // Green (Low)
+  HEATMAP_EMPTY: '#334155' // Slate for empty spots in heatmap mode
 };
 
 export const STATUS_LABELS = {
