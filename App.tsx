@@ -3,8 +3,9 @@ import { Scene3D } from './components/Scene3D';
 import { Scene2D } from './components/Scene2D';
 import { Sidebar } from './components/Sidebar';
 import { Handheld } from './components/Handheld';
+import { MoveReport } from './components/MoveReport';
 import { processData, parseCSV } from './utils/dataProcessor';
-import { MergedData, ViewMode, FilterState, RawAddressRow, RawItemRow, AddressStatus, ReceiptFilterType } from './types';
+import { MergedData, ViewMode, FilterState, RawAddressRow, RawItemRow, AddressStatus, RawCurveRow } from './types';
 import { Upload, AlertTriangle } from 'lucide-react';
 
 const parseDatePTBR = (dateStr: string): Date | null => {
@@ -28,13 +29,15 @@ export default function App() {
   const [data, setData] = useState<MergedData[]>([]);
   const [viewMode, setViewMode] = useState<ViewMode>('3D_ORBIT');
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [blinkId, setBlinkId] = useState<string | null>(null);
   
   const [colorMode, setColorMode] = useState<'REALISTIC' | 'STATUS'>('REALISTIC');
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [teleportPos, setTeleportPos] = useState<{x:number, y:number, z:number} | null>(null);
   const [loading, setLoading] = useState(false);
+  const [showReport, setShowReport] = useState(false);
   
-  const [files, setFiles] = useState<{ structure?: File, items?: File, pulmao?: File }>({});
+  const [files, setFiles] = useState<{ structure?: File, items?: File, pulmao?: File, curvePQR?: File }>({});
 
   const [filters, setFilters] = useState<FilterState>({
     status: [AddressStatus.Occupied, AddressStatus.Available, AddressStatus.Reserved, AddressStatus.Blocked],
@@ -43,14 +46,13 @@ export default function App() {
     expiryDays: null,
     receiptType: 'ALL',
     receiptDate: new Date().toISOString().split('T')[0],
-    sector: [] 
+    sector: [],
+    curveMode: 'NONE'
   });
 
   const availableSectors = useMemo(() => {
      const sectors = new Set<string>();
-     data.forEach(d => {
-         if (d.sector) sectors.add(d.sector);
-     });
+     data.forEach(d => { if (d.sector) sectors.add(d.sector); });
      return Array.from(sectors).sort();
   }, [data]);
 
@@ -60,15 +62,12 @@ export default function App() {
      }
   }, [availableSectors]);
 
-  // Efeito de Teleporte Automático ao filtrar Setor
   useEffect(() => {
       const isFilteringSpecific = filters.sector.length > 0 && filters.sector.length < availableSectors.length;
-      
       if (isFilteringSpecific && data.length > 0) {
           let targetX = 0;
           let targetZ = -Infinity;
           let found = false;
-
           for (const d of data) {
               if (filters.sector.includes(d.sector)) {
                   if (d.z > targetZ) {
@@ -78,7 +77,6 @@ export default function App() {
                   }
               }
           }
-
           if (found) {
               handleTeleport(targetX, 1.7, targetZ + 5);
           }
@@ -92,12 +90,13 @@ export default function App() {
     const hasExpiry = filters.expiryDays !== null;
     const hasReceipt = filters.receiptType !== 'ALL';
     const allowedSectors = new Set(filters.sector);
-    
-    const now = new Date();
-    now.setHours(0,0,0,0);
+    const now = new Date(); now.setHours(0,0,0,0);
 
     data.forEach(d => {
        if (!allowedSectors.has(d.sector)) return;
+       
+       // Special filtering for APANHA ONLY mode
+       if (viewMode === '2D_APANHA_ONLY' && d.rawAddress.ESP !== 'A') return;
 
        let matches = true;
        const relevantItem = d.rawAddress.ESP === 'P' ? d.pulmaoItem : d.rawItem;
@@ -122,9 +121,7 @@ export default function App() {
                    const diffTime = expiryDate.getTime() - now.getTime();
                    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
                    if (diffDays > filters.expiryDays!) matches = false;
-               } else {
-                   matches = false; 
-               }
+               } else { matches = false; }
            }
        }
 
@@ -137,23 +134,17 @@ export default function App() {
                    matches = false;
                } else {
                    receiptDate.setHours(0,0,0,0);
-                   
                    switch (filters.receiptType) {
                        case 'YESTERDAY':
-                           const yest = new Date(now);
-                           yest.setDate(now.getDate() - 1);
+                           const yest = new Date(now); yest.setDate(now.getDate() - 1);
                            if (!isSameDay(receiptDate, yest)) matches = false;
                            break;
                        case 'BEFORE_YESTERDAY':
-                           const beforeYest = new Date(now);
-                           beforeYest.setDate(now.getDate() - 2);
+                           const beforeYest = new Date(now); beforeYest.setDate(now.getDate() - 2);
                            if (!isSameDay(receiptDate, beforeYest)) matches = false;
                            break;
                        case 'THIS_WEEK':
-                           const day = now.getDay(); 
-                           const diff = now.getDate() - day; 
-                           const startOfWeek = new Date(now);
-                           startOfWeek.setDate(diff);
+                           const day = now.getDay(); const diff = now.getDate() - day; const startOfWeek = new Date(now); startOfWeek.setDate(diff);
                            if (receiptDate < startOfWeek) matches = false;
                            break;
                        case 'THIS_MONTH':
@@ -169,11 +160,10 @@ export default function App() {
                }
            }
        }
-
        if (matches) ids.add(d.id);
     });
     return ids;
-  }, [data, filters]);
+  }, [data, filters, viewMode]);
 
   const stats = useMemo(() => {
     const s = {
@@ -181,10 +171,8 @@ export default function App() {
       totalPulmao: 0, validPulmao: 0, occupiedPulmao: 0,
       total: 0, occupied: 0, available: 0, reserved: 0, blocked: 0 
     };
-
     data.forEach(d => {
       if (!filters.sector.includes(d.sector)) return;
-
       const isTypeVisible = filters.type.includes(d.rawAddress.ESP);
       const isStatusVisible = filters.status.includes(d.rawAddress.STATUS);
       const isSearchVisible = (!filters.search && filters.expiryDays === null && filters.receiptType === 'ALL') ? true : visibleItemIds.has(d.id);
@@ -196,7 +184,6 @@ export default function App() {
           if (d.rawAddress.STATUS === AddressStatus.Reserved) s.reserved++;
           if (d.rawAddress.STATUS === AddressStatus.Blocked) s.blocked++;
       }
-
       if (d.rawAddress.ESP === 'A') {
           s.totalApanha++;
           if (d.rawAddress.STATUS !== AddressStatus.Blocked) s.validApanha++;
@@ -210,7 +197,7 @@ export default function App() {
     return s;
   }, [data, filters, visibleItemIds]);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, type: 'structure' | 'items' | 'pulmao') => {
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, type: 'structure' | 'items' | 'pulmao' | 'curvePQR') => {
     if (e.target.files && e.target.files[0]) {
       setFiles(prev => ({ ...prev, [type]: e.target.files![0] }));
     }
@@ -223,8 +210,15 @@ export default function App() {
       const addresses = await parseCSV<RawAddressRow>(files.structure);
       const items = files.items ? await parseCSV<RawItemRow>(files.items) : [];
       const pulmao = files.pulmao ? await parseCSV<RawItemRow>(files.pulmao) : [];
-      const merged = processData(addresses, items, pulmao);
+      const curve = files.curvePQR ? await parseCSV<RawCurveRow>(files.curvePQR) : [];
+      
+      const merged = processData(addresses, items, pulmao, curve);
       setData(merged);
+      
+      // Auto enable PQR mode if file uploaded
+      if (files.curvePQR) {
+          setFilters(prev => ({ ...prev, curveMode: 'CURRENT_PQR' }));
+      }
     } catch (err) {
       console.error(err);
       alert('Erro ao processar CSV.');
@@ -233,13 +227,11 @@ export default function App() {
     }
   };
 
-  const selectedItem = useMemo(() => 
-    data.find(d => d.id === selectedId) || null, 
-  [selectedId, data]);
+  const selectedItem = useMemo(() => data.find(d => d.id === selectedId) || null, [selectedId, data]);
 
-  // [CORREÇÃO] Lógica de Toggle (Selecionar/Desselecionar)
   const handleSelect = (item: MergedData) => {
     setSelectedId(prevId => prevId === item.id ? null : item.id);
+    setBlinkId(null);
   };
 
   const handleTeleport = (x: number, y: number, z: number) => {
@@ -247,14 +239,29 @@ export default function App() {
     setTimeout(() => setTeleportPos(null), 100);
   };
 
+  const handleSelectMove = (itemId: string, targetId: string) => {
+      // Fecha relatório
+      setShowReport(false);
+      // Seleciona o item atual
+      setSelectedId(itemId);
+      // Teleporta para o item atual
+      const current = data.find(d => d.id === itemId);
+      if (current) {
+          handleTeleport(current.x, 1.7, current.z + 5);
+          // Faz o destino piscar
+          const target = data.find(d => d.id === targetId);
+          if (target) {
+              setBlinkId(target.id);
+          }
+      }
+  };
+
   if (data.length === 0) {
     return (
       <div className="w-full h-screen bg-[#0f172a] text-white flex items-center justify-center p-4">
         <div className="max-w-md w-full bg-slate-800/80 p-8 rounded-xl shadow-2xl border border-slate-700 backdrop-blur-sm">
           <div className="flex justify-center mb-6">
-             <div className="w-16 h-16 bg-cyan-600 rounded-full flex items-center justify-center shadow-lg shadow-cyan-500/30">
-               <Upload size={32} />
-             </div>
+             <div className="w-16 h-16 bg-cyan-600 rounded-full flex items-center justify-center shadow-lg shadow-cyan-500/30"><Upload size={32} /></div>
           </div>
           <h2 className="text-2xl font-bold text-center mb-2 text-white">Perlog WMS <span className="text-cyan-400">3D</span></h2>
           <p className="text-slate-400 text-center mb-6 text-sm">Importe seus dados para visualizar.</p>
@@ -269,8 +276,8 @@ export default function App() {
                <input type="file" accept=".csv" onChange={(e) => handleFileChange(e, 'items')} className="w-full text-sm text-slate-300 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-slate-700 file:text-slate-200 hover:file:bg-slate-600 cursor-pointer file:cursor-pointer" />
             </div>
             <div>
-              <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">Estoque Pulmão - Opcional</label>
-               <input type="file" accept=".csv" onChange={(e) => handleFileChange(e, 'pulmao')} className="w-full text-sm text-slate-300 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-slate-700 file:text-slate-200 hover:file:bg-slate-600 cursor-pointer file:cursor-pointer" />
+              <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">Curva PQR - Opcional</label>
+               <input type="file" accept=".csv" onChange={(e) => handleFileChange(e, 'curvePQR')} className="w-full text-sm text-slate-300 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm font-bold file:bg-purple-600 file:text-white hover:file:bg-purple-700 cursor-pointer file:cursor-pointer" />
             </div>
           </div>
 
@@ -278,7 +285,7 @@ export default function App() {
           
           <div className="mt-4 p-3 bg-cyan-900/20 border border-cyan-500/20 rounded text-cyan-400 text-xs flex gap-2">
              <AlertTriangle size={16} />
-             <span>CSV deve usar ponto e vírgula (;). Campos: CD, RUA, PRED, AP, STATUS, DESCRUA.</span>
+             <span>CSV deve usar ponto e vírgula (;).</span>
           </div>
         </div>
       </div>
@@ -301,11 +308,9 @@ export default function App() {
         filters={filters}
         setFilters={setFilters}
         stats={stats}
-        colorMode={colorMode}
-        setColorMode={setColorMode}
         availableSectors={availableSectors}
-        // [NOVO] Passamos a função de fechar detalhe para a Sidebar (se necessário)
         onCloseDetail={() => setSelectedId(null)}
+        onShowReport={() => setShowReport(true)}
       />
       
       <main className="flex-1 relative h-full">
@@ -316,17 +321,22 @@ export default function App() {
              visibleTypes={filters.type} 
              visibleItemIds={visibleItemIds}
              mode={viewMode === '3D_WALK' ? 'WALK' : 'ORBIT'} 
-             onSelect={handleSelect} // Usa a nova lógica de toggle
+             onSelect={handleSelect}
              selectedId={selectedId}
              teleportPos={teleportPos}
              isMobileOpen={isMobileOpen}
              colorMode={colorMode}
+             curveMode={filters.curveMode}
+             blinkId={blinkId}
            />
         ) : (
            <Scene2D 
              data={filteredDataFor2D}
-             onSelect={handleSelect} // Usa a nova lógica de toggle
+             onSelect={handleSelect}
              selectedId={selectedId}
+             mode={viewMode as '2D_PLAN' | '2D_APANHA_ONLY'}
+             curveMode={filters.curveMode}
+             blinkId={blinkId}
            />
         )}
         
@@ -334,7 +344,7 @@ export default function App() {
            <Handheld 
              data={data} 
              onTeleport={handleTeleport}
-             onSelect={handleSelect} // Usa a nova lógica de toggle
+             onSelect={handleSelect}
              isOpen={isMobileOpen}
              setIsOpen={setIsMobileOpen}
            />
@@ -346,6 +356,11 @@ export default function App() {
            </div>
         )}
       </main>
+
+      {/* Report Modal */}
+      {showReport && (
+          <MoveReport data={data} onClose={() => setShowReport(false)} onSelectMove={handleSelectMove} />
+      )}
     </div>
   );
 }
