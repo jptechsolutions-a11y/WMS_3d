@@ -1,26 +1,37 @@
 import React, { useMemo, useState, useRef, useEffect } from 'react';
-import { MergedData } from '../types';
-import { DIMENSIONS } from '../constants';
+import { MergedData, CurveMode, AddressStatus } from '../types';
+import { DIMENSIONS, COLORS } from '../constants';
 import { ZoomIn, ZoomOut, Move, LocateFixed } from 'lucide-react';
 
 interface Scene2DProps {
   data: MergedData[];
   onSelect: (data: MergedData) => void;
   selectedId: string | null;
+  mode: '2D_PLAN' | '2D_APANHA_ONLY';
+  curveMode: CurveMode;
+  blinkId?: string | null; // ID para piscar (destino sugestivo)
 }
 
-export const Scene2D: React.FC<Scene2DProps> = ({ data, onSelect, selectedId }) => {
+export const Scene2D: React.FC<Scene2DProps> = ({ data, onSelect, selectedId, mode, curveMode, blinkId }) => {
   const [transform, setTransform] = useState({ x: 0, y: 0, k: 1 }); 
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const isDragging = useRef(false);
   const lastPos = useRef({ x: 0, y: 0 });
 
+  // Filter Logic inside Component to handle mode specific filtering
+  const visibleData = useMemo(() => {
+      if (mode === '2D_APANHA_ONLY') {
+          return data.filter(d => d.rawAddress.ESP === 'A');
+      }
+      return data;
+  }, [data, mode]);
+
   const { bounds, streetLabels } = useMemo(() => {
     let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
-    const streets = new Map<string, { sumX: number, maxZ: number, count: number }>(); // use maxZ for Start
+    const streets = new Map<string, { sumX: number, maxZ: number, count: number }>(); 
 
-    data.forEach(d => {
+    visibleData.forEach(d => {
       if (d.x < minX) minX = d.x;
       if (d.x > maxX) maxX = d.x;
       if (d.z < minZ) minZ = d.z;
@@ -31,7 +42,7 @@ export const Scene2D: React.FC<Scene2DProps> = ({ data, onSelect, selectedId }) 
       }
       const s = streets.get(d.rawAddress.RUA)!;
       s.sumX += d.x;
-      if (d.z > s.maxZ) s.maxZ = d.z; // Start of street is at MAX Z (0) now
+      if (d.z > s.maxZ) s.maxZ = d.z; 
       s.count++;
     });
 
@@ -42,14 +53,14 @@ export const Scene2D: React.FC<Scene2DProps> = ({ data, onSelect, selectedId }) 
     const labels = Array.from(streets.entries()).map(([name, val]) => ({
         name,
         x: val.sumX / val.count,
-        z: val.maxZ + 2 // Place label "below" start
+        z: val.maxZ + 2 
     }));
 
     return { 
-        bounds: { minX: minX - margin, minZ: minZ - margin, w, h },
+        bounds: { minX: minX - margin, minZ: minZ - margin, w: w || 100, h: h || 100 },
         streetLabels: labels
     };
-  }, [data]);
+  }, [visibleData]);
 
   const handleWheel = (e: React.WheelEvent) => {
     e.preventDefault();
@@ -76,11 +87,20 @@ export const Scene2D: React.FC<Scene2DProps> = ({ data, onSelect, selectedId }) 
     isDragging.current = false;
   };
 
-  const resetView = () => {
-      setTransform({ x: 0, y: 0, k: 1 });
-  };
-
   const baseScale = 15; 
+
+  const getFillColor = (item: MergedData) => {
+      if (curveMode === 'CURRENT_PQR') {
+          return item.heatmapColor || COLORS.HEATMAP_EMPTY;
+      }
+      if (curveMode === 'SUGGESTED_PQR') {
+          if (item.suggestedCurve === 'P') return COLORS.HEATMAP_P;
+          if (item.suggestedCurve === 'Q') return COLORS.HEATMAP_Q;
+          if (item.suggestedCurve === 'R') return COLORS.HEATMAP_R;
+          return COLORS.HEATMAP_EMPTY;
+      }
+      return item.color;
+  };
 
   return (
     <div 
@@ -92,14 +112,15 @@ export const Scene2D: React.FC<Scene2DProps> = ({ data, onSelect, selectedId }) 
         onMouseLeave={handleMouseUp}
         onWheel={handleWheel}
     >
-       <div className="absolute top-4 left-4 text-slate-500 font-mono text-sm z-10 pointer-events-none select-none">
-         TOP DOWN VIEW (PLANTA) • Scroll p/ Zoom • Arraste p/ Mover
+       <div className="absolute top-4 left-4 text-slate-500 font-mono text-sm z-10 pointer-events-none select-none bg-white/80 p-2 rounded backdrop-blur">
+         {mode === '2D_APANHA_ONLY' ? 'VISÃO EXCLUSIVA: APANHA' : 'VISÃO GERAL (PLANTA)'}
+         <br/>
+         <span className="text-[10px]">Scroll p/ Zoom • Arraste p/ Mover</span>
        </div>
 
        <div className="absolute bottom-8 right-8 flex flex-col gap-2 z-10">
           <button onClick={() => setTransform(p => ({ ...p, k: p.k * 1.2 }))} className="p-2 bg-white shadow rounded hover:bg-slate-50"><ZoomIn size={20} className="text-slate-600"/></button>
           <button onClick={() => setTransform(p => ({ ...p, k: p.k / 1.2 }))} className="p-2 bg-white shadow rounded hover:bg-slate-50"><ZoomOut size={20} className="text-slate-600"/></button>
-          <button onClick={resetView} className="p-2 bg-white shadow rounded hover:bg-slate-50"><LocateFixed size={20} className="text-slate-600"/></button>
        </div>
        
        <svg 
@@ -118,66 +139,39 @@ export const Scene2D: React.FC<Scene2DProps> = ({ data, onSelect, selectedId }) 
                <path d={`M ${baseScale * 5} 0 L 0 0 0 ${baseScale * 5}`} fill="none" stroke="#e2e8f0" strokeWidth="2"/>
              </pattern>
           </defs>
-          <rect 
-            x={bounds.minX * baseScale} 
-            y={bounds.minZ * baseScale} 
-            width={bounds.w * baseScale} 
-            height={bounds.h * baseScale} 
-            fill="url(#grid)" 
-          />
+          <rect x={bounds.minX * baseScale} y={bounds.minZ * baseScale} width={bounds.w * baseScale} height={bounds.h * baseScale} fill="url(#grid)" />
 
           {streetLabels.map(s => (
-              <text
-                key={s.name}
-                x={s.x * baseScale}
-                y={s.z * baseScale}
-                textAnchor="middle"
-                fontSize={baseScale * 1.5}
-                fontWeight="bold"
-                fill="#475569"
-                style={{ pointerEvents: 'none' }}
-              >
-                  {s.name}
-              </text>
+              <text key={s.name} x={s.x * baseScale} y={s.z * baseScale} textAnchor="middle" fontSize={baseScale * 1.5} fontWeight="bold" fill="#475569" style={{ pointerEvents: 'none' }}>{s.name}</text>
           ))}
 
-          {data.map(item => {
+          {visibleData.map(item => {
              const sx = item.x * baseScale;
              const sy = item.z * baseScale;
              const w = 1.6 * baseScale;
              const h = DIMENSIONS.RACK_DEPTH * baseScale;
              const isSelected = selectedId === item.id;
+             const isBlinking = blinkId === item.id;
+             const color = getFillColor(item);
 
              return (
-               <g 
-                  key={item.id} 
-                  onClick={(e) => { e.stopPropagation(); onSelect(item); }}
-                  className="cursor-pointer hover:opacity-80 transition-opacity"
-               >
+               <g key={item.id} onClick={(e) => { e.stopPropagation(); onSelect(item); }} className={isBlinking ? "animate-pulse" : ""}>
                  <rect
                     x={sx - w/2} 
                     y={sy}
                     width={w}
                     height={h}
-                    fill={item.color}
-                    stroke={isSelected ? 'black' : '#fff'}
-                    strokeWidth={isSelected ? 2 : 1}
+                    fill={color}
+                    stroke={isSelected || isBlinking ? (isBlinking ? 'red' : 'black') : '#fff'}
+                    strokeWidth={isSelected || isBlinking ? 2 : 1}
                     rx={2}
                  />
                  {transform.k > 1.5 && (
-                     <text 
-                        x={sx} 
-                        y={sy + h/2} 
-                        fontSize={baseScale * 0.4} 
-                        fill={isSelected || item.color === '#22c55e' ? 'black' : 'white'} 
-                        textAnchor="middle" 
-                        dominantBaseline="middle"
-                        pointerEvents="none"
-                     >
+                     <text x={sx} y={sy + h/2} fontSize={baseScale * 0.4} fill={'black'} textAnchor="middle" dominantBaseline="middle" pointerEvents="none" fontWeight="bold">
                         {item.rawAddress.SL}
                      </text>
                  )}
-                 <title>{`Rua: ${item.rawAddress.RUA} | P: ${item.rawAddress.PRED} | AP: ${item.rawAddress.AP} | Sala: ${item.rawAddress.SL}`}</title>
+                 <title>{`Rua: ${item.rawAddress.RUA} | P: ${item.rawAddress.PRED} | AP: ${item.rawAddress.AP} | Status: ${item.rawAddress.STATUS}`}</title>
                </g>
              );
           })}
