@@ -237,8 +237,6 @@ export default function App() {
       // [NOVO] Processar Arquivo de Curva se existir
       if (files.curve) {
           const curveData = await parseCSV<RawCurveRow>(files.curve);
-          // O periodDays inicial é definido no form de importação? 
-          // Por simplicidade, assumiremos o padrão da config ou podemos adicionar um input no modal inicial.
           merged = calculateCurveData(merged, curveData, analysisConfig.periodDays);
       }
 
@@ -315,7 +313,6 @@ export default function App() {
     );
   }
 
-  // Filtragem para Scene2D
   const filteredDataFor2D = data.filter(d => 
     filters.type.includes(d.rawAddress.ESP) && 
     filters.status.includes(d.rawAddress.STATUS) &&
