@@ -16,8 +16,7 @@ const extractSector = (desc: string): string => {
 
 const parseDecimal = (str: string): number => {
   if (!str) return 0;
-  // Trata formato brasileiro (1.000,00) ou internacional (1000.00)
-  // Assumindo CSV BR com vírgula decimal
+  // Trata formato brasileiro (1.000,00)
   return parseFloat(str.replace(/\./g, '').replace(',', '.')) || 0;
 };
 
@@ -54,7 +53,7 @@ export const calculateCurveData = (
 
         const cRow = curveMap.get(d.id);
         
-        // Se não tiver dados no arquivo de curva, assume zero
+        // Se não tiver dados no arquivo de curva, assume zero (Curva C/R)
         const visitsTotal = cRow ? parseDecimal(cRow.VISITAS) : 0;
         const volumeTotal = cRow ? parseDecimal(cRow.VOLUMES) : 0;
         const weight = cRow ? parseDecimal(cRow.PESOBRUTO) : 0;
@@ -63,10 +62,10 @@ export const calculateCurveData = (
         const visitsPerDay = periodDays > 0 ? visitsTotal / periodDays : 0;
         const volumePerDay = periodDays > 0 ? volumeTotal / periodDays : 0;
 
-        // Score para Ranking "Ideal":
-        // PQR (Visitas) tem peso maior na logística de separação.
-        // Critério de desempate: Cubagem (Itens maiores/pesados primeiro para ergonomia ou layout)
-        // Score = (Visitas * 1000) + Cubagem
+        // Score para Ranking "Ideal" (Sugestão de Layout):
+        // PQR (Visitas) tem peso maior na logística de separação para reduzir caminhada.
+        // Cubagem entra como critério de desempate e ergonomia (Pesados/Grandes no início da rua).
+        // Score = (Visitas * 10000) + Cubagem
         const score = (visitsPerDay * 10000) + cubage;
 
         analyzedItems.push({
@@ -79,14 +78,14 @@ export const calculateCurveData = (
         });
     });
 
-    // 3. Ordenar para definir classes (Pareto 80/15/5 aproximado ou 20/30/50 por item count)
-    // Vamos usar contagem de itens (Top 20% itens = A/P, Próximos 30% = B/Q, Resto = C/R)
+    // 3. Ordenar para definir classes (Pareto 80/15/5 ou simplificado por contagem)
+    // Vamos usar: Top 20% = A/P, Próximos 30% = B/Q, Resto 50% = C/R
     
     // Classificação PQR (Visitas)
     analyzedItems.sort((a, b) => b.visits - a.visits);
     const totalItems = analyzedItems.length;
-    const cutP = Math.floor(totalItems * 0.2); // Top 20%
-    const cutQ = Math.floor(totalItems * 0.5); // Next 30% (accumulated 50%)
+    const cutP = Math.floor(totalItems * 0.2); 
+    const cutQ = Math.floor(totalItems * 0.5); // Acumulado
 
     const pqrMap = new Map<string, 'P'|'Q'|'R'>();
     analyzedItems.forEach((item, index) => {
@@ -104,8 +103,8 @@ export const calculateCurveData = (
         else abcMap.set(item.id, 'C');
     });
 
-    // Ranking Ideal (Score Composto)
-    analyzedItems.sort((a, b) => b.score - a.score); // Maior score primeiro
+    // Ranking Ideal Global (Melhores Itens) baseado no Score Composto
+    analyzedItems.sort((a, b) => b.score - a.score); 
     const rankMap = new Map<string, number>();
     analyzedItems.forEach((item, index) => {
         rankMap.set(item.id, index + 1);
@@ -121,14 +120,14 @@ export const calculateCurveData = (
         const abc = abcMap.get(d.id)!;
         const itemMetrics = analyzedItems.find(i => i.id === d.id)!;
 
-        // Combined Class para cores cruzadas
-        // Se P ou A -> Verde
-        // Se Q ou B (e não P/A) -> Amarelo
-        // Resto -> Vermelho
+        // Combined Class para visualização cruzada
         let combined: 'AA' | 'BB' | 'CC' | 'MIX' = 'CC';
-        if (pqr === 'P' && abc === 'A') combined = 'AA'; // Super item
-        else if (pqr === 'P' || abc === 'A') combined = 'AA'; // Prioridade Alta
-        else if (pqr === 'Q' || abc === 'B') combined = 'BB'; // Prioridade Média
+        // Lógica de Cores Cruzadas:
+        // Verde se for P (frequente) OU A (volumoso)
+        if (pqr === 'P' || abc === 'A') combined = 'AA';
+        // Amarelo se for Q ou B (e não for P/A)
+        else if (pqr === 'Q' || abc === 'B') combined = 'BB';
+        // Vermelho resto
         else combined = 'CC';
 
         return {
