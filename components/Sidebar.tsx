@@ -1,7 +1,7 @@
 import React from 'react';
 import { MergedData, ViewMode, AddressStatus, FilterState, ReceiptFilterType, AnalysisConfig } from '../types';
 import { COLORS, STATUS_LABELS } from '../constants';
-import { Settings, Eye, Map, Box, Info, Search, Layers, Palette, CalendarClock, Truck, Tag, X, FileBarChart, ToggleLeft, ToggleRight } from 'lucide-react';
+import { Settings, Eye, Map, Box, Info, Search, Layers, Palette, CalendarClock, Truck, Tag, X, FileBarChart, ArrowRightLeft } from 'lucide-react';
 import clsx from 'clsx';
 import logoIcon from '/icon.png';
 
