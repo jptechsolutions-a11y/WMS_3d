@@ -3,9 +3,11 @@ import { Scene3D } from './components/Scene3D';
 import { Scene2D } from './components/Scene2D';
 import { Sidebar } from './components/Sidebar';
 import { Handheld } from './components/Handheld';
-import { processData, parseCSV } from './utils/dataProcessor';
-import { MergedData, ViewMode, FilterState, RawAddressRow, RawItemRow, AddressStatus, ReceiptFilterType } from './types';
-import { Upload, AlertTriangle } from 'lucide-react';
+// [NOVO] Import CurveAnalysis
+import { CurveAnalysis } from './components/CurveAnalysis';
+import { processData, parseCSV, calculateCurveData } from './utils/dataProcessor';
+import { MergedData, ViewMode, FilterState, RawAddressRow, RawItemRow, AddressStatus, ReceiptFilterType, AnalysisConfig, RawCurveRow } from './types';
+import { Upload, AlertTriangle, FileText } from 'lucide-react';
 
 const parseDatePTBR = (dateStr: string): Date | null => {
   if (!dateStr) return null;
@@ -34,7 +36,8 @@ export default function App() {
   const [teleportPos, setTeleportPos] = useState<{x:number, y:number, z:number} | null>(null);
   const [loading, setLoading] = useState(false);
   
-  const [files, setFiles] = useState<{ structure?: File, items?: File, pulmao?: File }>({});
+  // [NOVO] Estado para o arquivo de curva
+  const [files, setFiles] = useState<{ structure?: File, items?: File, pulmao?: File, curve?: File }>({});
 
   const [filters, setFilters] = useState<FilterState>({
     status: [AddressStatus.Occupied, AddressStatus.Available, AddressStatus.Reserved, AddressStatus.Blocked],
@@ -44,6 +47,13 @@ export default function App() {
     receiptType: 'ALL',
     receiptDate: new Date().toISOString().split('T')[0],
     sector: [] 
+  });
+
+  // [NOVO] Configuração da Análise
+  const [analysisConfig, setAnalysisConfig] = useState<AnalysisConfig>({
+      periodDays: 30, // Padrão 30 dias
+      curveType: 'CROSS',
+      viewState: 'CURRENT'
   });
 
   const availableSectors = useMemo(() => {
@@ -60,7 +70,6 @@ export default function App() {
      }
   }, [availableSectors]);
 
-  // Efeito de Teleporte Automático ao filtrar Setor
   useEffect(() => {
       const isFilteringSpecific = filters.sector.length > 0 && filters.sector.length < availableSectors.length;
       
@@ -210,7 +219,7 @@ export default function App() {
     return s;
   }, [data, filters, visibleItemIds]);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, type: 'structure' | 'items' | 'pulmao') => {
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, type: 'structure' | 'items' | 'pulmao' | 'curve') => {
     if (e.target.files && e.target.files[0]) {
       setFiles(prev => ({ ...prev, [type]: e.target.files![0] }));
     }
@@ -223,7 +232,16 @@ export default function App() {
       const addresses = await parseCSV<RawAddressRow>(files.structure);
       const items = files.items ? await parseCSV<RawItemRow>(files.items) : [];
       const pulmao = files.pulmao ? await parseCSV<RawItemRow>(files.pulmao) : [];
-      const merged = processData(addresses, items, pulmao);
+      let merged = processData(addresses, items, pulmao);
+      
+      // [NOVO] Processar Arquivo de Curva se existir
+      if (files.curve) {
+          const curveData = await parseCSV<RawCurveRow>(files.curve);
+          // O periodDays inicial é definido no form de importação? 
+          // Por simplicidade, assumiremos o padrão da config ou podemos adicionar um input no modal inicial.
+          merged = calculateCurveData(merged, curveData, analysisConfig.periodDays);
+      }
+
       setData(merged);
     } catch (err) {
       console.error(err);
@@ -237,7 +255,6 @@ export default function App() {
     data.find(d => d.id === selectedId) || null, 
   [selectedId, data]);
 
-  // [CORREÇÃO] Lógica de Toggle (Selecionar/Desselecionar)
   const handleSelect = (item: MergedData) => {
     setSelectedId(prevId => prevId === item.id ? null : item.id);
   };
@@ -272,19 +289,33 @@ export default function App() {
               <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">Estoque Pulmão - Opcional</label>
                <input type="file" accept=".csv" onChange={(e) => handleFileChange(e, 'pulmao')} className="w-full text-sm text-slate-300 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-slate-700 file:text-slate-200 hover:file:bg-slate-600 cursor-pointer file:cursor-pointer" />
             </div>
+            <div className="pt-2 border-t border-slate-700 mt-2">
+              <label className="block text-xs font-semibold uppercase text-cyan-400 mb-1 flex items-center gap-2"><FileText size={14}/> Curva ABC/PQR (Análise)</label>
+              <input type="file" accept=".csv" onChange={(e) => handleFileChange(e, 'curve')} className="w-full text-sm text-slate-300 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-slate-700 file:text-slate-200 hover:file:bg-slate-600 cursor-pointer file:cursor-pointer" />
+              <div className="mt-2 flex items-center gap-2">
+                 <label className="text-xs text-slate-400">Período (Dias):</label>
+                 <input 
+                    type="number" 
+                    value={analysisConfig.periodDays} 
+                    onChange={(e) => setAnalysisConfig({...analysisConfig, periodDays: parseInt(e.target.value) || 1})}
+                    className="w-16 bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-white"
+                 />
+              </div>
+            </div>
           </div>
 
           <button onClick={handleImport} disabled={loading || !files.structure} className="w-full mt-8 bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3 rounded transition-all shadow-lg shadow-cyan-900/50">{loading ? 'Processando...' : 'Gerar Visualização'}</button>
           
           <div className="mt-4 p-3 bg-cyan-900/20 border border-cyan-500/20 rounded text-cyan-400 text-xs flex gap-2">
              <AlertTriangle size={16} />
-             <span>CSV deve usar ponto e vírgula (;). Campos: CD, RUA, PRED, AP, STATUS, DESCRUA.</span>
+             <span>CSV deve usar ponto e vírgula (;). Arquivo de Curva unificado (ABC+PQR).</span>
           </div>
         </div>
       </div>
     );
   }
 
+  // Filtragem para Scene2D
   const filteredDataFor2D = data.filter(d => 
     filters.type.includes(d.rawAddress.ESP) && 
     filters.status.includes(d.rawAddress.STATUS) &&
@@ -304,19 +335,28 @@ export default function App() {
         colorMode={colorMode}
         setColorMode={setColorMode}
         availableSectors={availableSectors}
-        // [NOVO] Passamos a função de fechar detalhe para a Sidebar (se necessário)
         onCloseDetail={() => setSelectedId(null)}
+        // [NOVO] Props para Análise
+        analysisConfig={analysisConfig}
+        setAnalysisConfig={setAnalysisConfig}
       />
       
       <main className="flex-1 relative h-full">
-        {viewMode.includes('3D') ? (
+        {viewMode === 'ANALYSIS_ABC' ? (
+           <CurveAnalysis 
+             data={data}
+             onSelect={handleSelect}
+             selectedId={selectedId}
+             config={analysisConfig}
+           />
+        ) : viewMode.includes('3D') ? (
            <Scene3D 
              data={data} 
              visibleStatus={filters.status} 
              visibleTypes={filters.type} 
              visibleItemIds={visibleItemIds}
              mode={viewMode === '3D_WALK' ? 'WALK' : 'ORBIT'} 
-             onSelect={handleSelect} // Usa a nova lógica de toggle
+             onSelect={handleSelect} 
              selectedId={selectedId}
              teleportPos={teleportPos}
              isMobileOpen={isMobileOpen}
@@ -325,7 +365,7 @@ export default function App() {
         ) : (
            <Scene2D 
              data={filteredDataFor2D}
-             onSelect={handleSelect} // Usa a nova lógica de toggle
+             onSelect={handleSelect} 
              selectedId={selectedId}
            />
         )}
@@ -334,7 +374,7 @@ export default function App() {
            <Handheld 
              data={data} 
              onTeleport={handleTeleport}
-             onSelect={handleSelect} // Usa a nova lógica de toggle
+             onSelect={handleSelect} 
              isOpen={isMobileOpen}
              setIsOpen={setIsMobileOpen}
            />
