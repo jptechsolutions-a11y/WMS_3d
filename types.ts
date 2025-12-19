@@ -41,7 +41,7 @@ export interface RawItemRow {
 // [NOVO] Interface para o arquivo de Curva ABC/PQR
 export interface RawCurveRow {
   NROEMPRESA: string;
-  SEQPRODUTO: string; // Link com RawItemRow.CODIGO (ou SEQPRODUTO se for o ID)
+  SEQPRODUTO: string; 
   DESCCOMPLETA: string;
   QTDEMBALAGEM: string;
   PESOBRUTO: string;
@@ -63,18 +63,18 @@ export interface RawCurveRow {
   TX_REPOS_PICKING_ATUAL: string;
   NORMA_PULMAO: string;
   TX_REPOS_POS_CORRECAO_PULMAO: string;
-  SEQENDERECO: string; // Link direto com o endereço
+  SEQENDERECO: string;
 }
 
 export interface CurveData {
   pqrClass: 'P' | 'Q' | 'R';
   abcClass: 'A' | 'B' | 'C';
-  combinedClass: 'AA' | 'BB' | 'CC' | 'MIX'; // Simplificação para cores
+  combinedClass: 'AA' | 'BB' | 'CC' | 'MIX'; 
   visitsPerDay: number;
   volumePerDay: number;
   weight: number;
   cubage: number;
-  idealRank: number; // Rank global para sugestão (1 = melhor item)
+  idealRank: number; // 1 = Melhor item (Deve ficar na melhor posição)
 }
 
 export interface MergedData {
