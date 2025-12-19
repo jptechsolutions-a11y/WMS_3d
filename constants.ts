@@ -50,7 +50,12 @@ export const COLORS = {
   TUNNEL_HIGHLIGHT: '#06b6d4',
   HOVER: '#ffffff',
   SELECTED: '#06b6d4', 
-  TEXT_LABEL: '#000000'
+  TEXT_LABEL: '#000000',
+
+  // [NOVO] Cores da Curva ABC/PQR
+  CURVE_A: '#22c55e', // Verde (Alta performance)
+  CURVE_B: '#eab308', // Amarelo (Média)
+  CURVE_C: '#ef4444', // Vermelho (Baixa)
 };
 
 export const STATUS_LABELS = {
