@@ -3,7 +3,6 @@ import { MergedData, ViewMode, AddressStatus, FilterState, ReceiptFilterType, An
 import { COLORS, STATUS_LABELS } from '../constants';
 import { Settings, Eye, Map, Box, Info, Search, Layers, Palette, CalendarClock, Truck, Tag, X, FileBarChart, ArrowRightLeft } from 'lucide-react';
 import clsx from 'clsx';
-import logoIcon from '/icon.png';
 
 interface SidebarProps {
   viewMode: ViewMode;
@@ -139,7 +138,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       <div className="w-80 h-full bg-[#0f172a] border-r border-slate-800 flex flex-col text-slate-100 shadow-2xl z-30 font-sans relative">
         
         <div className="p-6 border-b border-slate-800 flex items-center bg-[#0b1120]">
-         <img src={logoIcon} alt="JP Logo" className="h-10 w-auto mr-3"/>
+         <img src="/icon.png" alt="JP Logo" className="h-10 w-auto mr-3"/>
           <div>
               <h1 className="text-xl font-bold text-white leading-none tracking-tight">
               WMS <span className="text-cyan-400">3D</span>
