@@ -3,7 +3,7 @@ import { Scene3D } from './components/Scene3D';
 import { Scene2D } from './components/Scene2D';
 import { Sidebar } from './components/Sidebar';
 import { Handheld } from './components/Handheld';
-// [NOVO] Import CurveAnalysis
+// [NOVO] Import CurveAnalysis e funções de processamento
 import { CurveAnalysis } from './components/CurveAnalysis';
 import { processData, parseCSV, calculateCurveData } from './utils/dataProcessor';
 import { MergedData, ViewMode, FilterState, RawAddressRow, RawItemRow, AddressStatus, ReceiptFilterType, AnalysisConfig, RawCurveRow } from './types';
