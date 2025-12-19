@@ -1,5 +1,5 @@
 import Papa from 'papaparse';
-import { RawAddressRow, RawItemRow, MergedData, AddressStatus } from '../types';
+import { RawAddressRow, RawItemRow, MergedData, AddressStatus, RawCurveRow, CurveData } from '../types';
 import { COLORS, DIMENSIONS } from '../constants';
 
 // Helper to extract number from string (e.g., "RUA001" -> 1)
@@ -9,13 +9,16 @@ export const extractNumber = (str: string): number => {
   return match ? parseInt(match[0], 10) : 0;
 };
 
-// [NOVO] Helper para extrair o setor da descrição da rua
-// Ex: "RUA 021 MERCEARIA" -> "MERCEARIA"
-// Ex: "RUA 01 - LIQUIDA" -> "LIQUIDA"
 const extractSector = (desc: string): string => {
   if (!desc) return 'GERAL';
-  // Remove "RUA", digitos opcionais, espaços e hifens do início
   return desc.replace(/^RUA\s*\d+\s*[-]?\s*/i, '').trim().toUpperCase() || 'GERAL';
+};
+
+const parseDecimal = (str: string): number => {
+  if (!str) return 0;
+  // Trata formato brasileiro (1.000,00) ou internacional (1000.00)
+  // Assumindo CSV BR com vírgula decimal
+  return parseFloat(str.replace(/\./g, '').replace(',', '.')) || 0;
 };
 
 export const parseCSV = <T>(file: File): Promise<T[]> => {
@@ -29,19 +32,132 @@ export const parseCSV = <T>(file: File): Promise<T[]> => {
   });
 };
 
+// [NOVO] Processamento da Curva ABC/PQR
+export const calculateCurveData = (
+    data: MergedData[], 
+    curveRows: RawCurveRow[], 
+    periodDays: number
+): MergedData[] => {
+    
+    // 1. Mapear dados da curva pelo SEQENDERECO
+    const curveMap = new Map<string, RawCurveRow>();
+    curveRows.forEach(row => {
+        if(row.SEQENDERECO) curveMap.set(row.SEQENDERECO, row);
+    });
+
+    // 2. Calcular métricas individuais e criar lista temporária para ordenação
+    let analyzedItems: { id: string, visits: number, volume: number, weight: number, cubage: number, score: number }[] = [];
+
+    data.forEach(d => {
+        // Apenas para itens de APANHA
+        if (d.rawAddress.ESP !== 'A') return;
+
+        const cRow = curveMap.get(d.id);
+        
+        // Se não tiver dados no arquivo de curva, assume zero
+        const visitsTotal = cRow ? parseDecimal(cRow.VISITAS) : 0;
+        const volumeTotal = cRow ? parseDecimal(cRow.VOLUMES) : 0;
+        const weight = cRow ? parseDecimal(cRow.PESOBRUTO) : 0;
+        const cubage = cRow ? parseDecimal(cRow.PESOCUBADO) : 0;
+
+        const visitsPerDay = periodDays > 0 ? visitsTotal / periodDays : 0;
+        const volumePerDay = periodDays > 0 ? volumeTotal / periodDays : 0;
+
+        // Score para Ranking "Ideal":
+        // PQR (Visitas) tem peso maior na logística de separação.
+        // Critério de desempate: Cubagem (Itens maiores/pesados primeiro para ergonomia ou layout)
+        // Score = (Visitas * 1000) + Cubagem
+        const score = (visitsPerDay * 10000) + cubage;
+
+        analyzedItems.push({
+            id: d.id,
+            visits: visitsPerDay,
+            volume: volumePerDay,
+            weight,
+            cubage,
+            score
+        });
+    });
+
+    // 3. Ordenar para definir classes (Pareto 80/15/5 aproximado ou 20/30/50 por item count)
+    // Vamos usar contagem de itens (Top 20% itens = A/P, Próximos 30% = B/Q, Resto = C/R)
+    
+    // Classificação PQR (Visitas)
+    analyzedItems.sort((a, b) => b.visits - a.visits);
+    const totalItems = analyzedItems.length;
+    const cutP = Math.floor(totalItems * 0.2); // Top 20%
+    const cutQ = Math.floor(totalItems * 0.5); // Next 30% (accumulated 50%)
+
+    const pqrMap = new Map<string, 'P'|'Q'|'R'>();
+    analyzedItems.forEach((item, index) => {
+        if (index < cutP) pqrMap.set(item.id, 'P');
+        else if (index < cutQ) pqrMap.set(item.id, 'Q');
+        else pqrMap.set(item.id, 'R');
+    });
+
+    // Classificação ABC (Volume)
+    analyzedItems.sort((a, b) => b.volume - a.volume);
+    const abcMap = new Map<string, 'A'|'B'|'C'>();
+    analyzedItems.forEach((item, index) => {
+        if (index < cutP) abcMap.set(item.id, 'A');
+        else if (index < cutQ) abcMap.set(item.id, 'B');
+        else abcMap.set(item.id, 'C');
+    });
+
+    // Ranking Ideal (Score Composto)
+    analyzedItems.sort((a, b) => b.score - a.score); // Maior score primeiro
+    const rankMap = new Map<string, number>();
+    analyzedItems.forEach((item, index) => {
+        rankMap.set(item.id, index + 1);
+    });
+
+    // 4. Injetar dados de volta no MergedData
+    return data.map(d => {
+        if (d.rawAddress.ESP !== 'A' || !pqrMap.has(d.id)) {
+            return d;
+        }
+
+        const pqr = pqrMap.get(d.id)!;
+        const abc = abcMap.get(d.id)!;
+        const itemMetrics = analyzedItems.find(i => i.id === d.id)!;
+
+        // Combined Class para cores cruzadas
+        // Se P ou A -> Verde
+        // Se Q ou B (e não P/A) -> Amarelo
+        // Resto -> Vermelho
+        let combined: 'AA' | 'BB' | 'CC' | 'MIX' = 'CC';
+        if (pqr === 'P' && abc === 'A') combined = 'AA'; // Super item
+        else if (pqr === 'P' || abc === 'A') combined = 'AA'; // Prioridade Alta
+        else if (pqr === 'Q' || abc === 'B') combined = 'BB'; // Prioridade Média
+        else combined = 'CC';
+
+        return {
+            ...d,
+            curveData: {
+                pqrClass: pqr,
+                abcClass: abc,
+                combinedClass: combined,
+                visitsPerDay: itemMetrics.visits,
+                volumePerDay: itemMetrics.volume,
+                weight: itemMetrics.weight,
+                cubage: itemMetrics.cubage,
+                idealRank: rankMap.get(d.id)!
+            }
+        };
+    });
+};
+
 export const processData = (
     addresses: RawAddressRow[], 
     items: RawItemRow[],
     pulmaoItems: RawItemRow[] = [] 
 ): MergedData[] => {
   
-  // Map Picking Items
   const itemMap = new Map<string, RawItemRow>();
   items.forEach(item => {
     itemMap.set(item.SEQENDERECO, item);
   });
 
-  // Map Pulmão Items
   const pulmaoMap = new Map<string, RawItemRow>();
   pulmaoItems.forEach(item => {
     pulmaoMap.set(item.SEQENDERECO, item);
@@ -51,40 +167,29 @@ export const processData = (
     const item = itemMap.get(addr.SEQENDERECO);
     const pItem = pulmaoMap.get(addr.SEQENDERECO);
     
-    // 1. Parsing IDs
     const ruaIdx = extractNumber(addr.RUA);
     const predIdx = extractNumber(addr.PRED);
     const apIdx = extractNumber(addr.AP);
     const slIdx = extractNumber(addr.SL) || 1; 
     
-    // [NOVO] Extração do Setor
     const sector = extractSector(addr.DESCRUA || '');
 
-    // 2. Status Mapping
     let status = addr.STATUS as AddressStatus;
     if (![AddressStatus.Reserved, AddressStatus.Occupied, AddressStatus.Available, AddressStatus.Blocked].includes(status)) {
       status = AddressStatus.Blocked; 
     }
 
-    // 3. "Pulmão" (Tunnel) Logic
     const isTunnel = addr.ESP === 'P' && apIdx <= 3;
     let visualY = apIdx;
     if (isTunnel) {
         visualY = 5 + (apIdx - 1); 
     }
 
-    // 4. COORDINATE CALCULATION 
     const aisleCenterX = ruaIdx * DIMENSIONS.STREET_SPACING;
-
-    // Side Logic
     const isEvenPred = predIdx % 2 === 0;
     const sideMultiplier = isEvenPred ? 1 : -1;
-    
-    // Z Axis
     const predioSequenceIndex = Math.floor((predIdx - 1) / 2);
     const bayCenterZ = -(predioSequenceIndex * DIMENSIONS.BAY_WIDTH);
-
-    // Sala Logic
     const salaOffset = slIdx === 1 ? -0.7 : 0.7;
     
     const x = aisleCenterX + (sideMultiplier * DIMENSIONS.AISLE_CENTER_OFFSET);
@@ -101,7 +206,7 @@ export const processData = (
       z,
       color: COLORS[status] || COLORS.DEFAULT,
       isTunnel,
-      sector // [NOVO]
+      sector
     };
   });
 };
