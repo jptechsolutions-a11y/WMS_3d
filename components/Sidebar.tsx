@@ -81,7 +81,7 @@ const ItemDetail = ({ label, item }: { label: string, item: any }) => {
 };
 
 export const Sidebar: React.FC<SidebarProps> = ({ 
-  viewMode, setViewMode, selectedItem, filters, setFilters, stats, colorMode, setColorMode, availableSectors, onCloseDetail, analysisConfig, setAnalysisConfig
+  viewMode, setViewMode, selectedItem, filters, setFilters, stats, colorMode, setColorMode, availableSectors, onCloseDetail, analysisConfig, setAnalysisConfig 
 }) => {
 
   const toggleStatus = (status: string) => {
