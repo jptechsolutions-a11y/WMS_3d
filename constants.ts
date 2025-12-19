@@ -52,10 +52,10 @@ export const COLORS = {
   SELECTED: '#06b6d4', 
   TEXT_LABEL: '#000000',
 
-  // [NOVO] Cores da Curva ABC/PQR
-  CURVE_A: '#22c55e', // Verde (Alta performance)
-  CURVE_B: '#eab308', // Amarelo (Média)
-  CURVE_C: '#ef4444', // Vermelho (Baixa)
+  // [NOVO] Cores da Curva ABC/PQR (Mapa de Calor)
+  CURVE_A: '#22c55e', // Verde (Alta performance/Giro)
+  CURVE_B: '#eab308', // Amarelo (Médio)
+  CURVE_C: '#ef4444', // Vermelho (Baixo)
 };
 
 export const STATUS_LABELS = {
