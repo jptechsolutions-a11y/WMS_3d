@@ -36,8 +36,13 @@ export interface RawItemRow {
   VALIDADE: string; // Date string
   RECEBIMENTO: string; // Date string
   SEQENDERECO: string;
-  
-  // Analytics Columns
+}
+
+export interface RawMetricsRow {
+  NROEMPRESA?: string;
+  SEQPRODUTO?: string; // Código do produto
+  CODIGO?: string;     // Alternativa para código
+  SEQENDERECO?: string; // Link direto endereço
   VISITAS?: string;
   VOLUMES?: string;
   DIAS_SAIDA?: string;
@@ -62,6 +67,9 @@ export interface MergedData {
   rawItem?: RawItemRow;    // Apanha Stock
   pulmaoItem?: RawItemRow; // Pulmão Stock
   
+  // Analytics info merged from Metrics file
+  metrics?: RawMetricsRow;
+
   // Parsed Coordinates for 3D/2D
   x: number; // Based on RUA
   y: number; // Based on AP (Calculated height)
@@ -71,7 +79,7 @@ export interface MergedData {
   isTunnel: boolean;
   sector: string;
   
-  // Analytics
+  // Calculated Analytics
   analytics?: AnalyticsData;
 }
 
