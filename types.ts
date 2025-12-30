@@ -22,7 +22,7 @@ export interface RawAddressRow {
   PAR_IMPAR: string;
   CODTIPENDER: string;
   TIPOENDERECO: string;
-  DESCRUA?: string; // [NOVO] Coluna adicionada
+  DESCRUA?: string;
 }
 
 export interface RawItemRow {
@@ -36,13 +36,31 @@ export interface RawItemRow {
   VALIDADE: string; // Date string
   RECEBIMENTO: string; // Date string
   SEQENDERECO: string;
+  
+  // Analytics Columns
+  VISITAS?: string;
+  VOLUMES?: string;
+  DIAS_SAIDA?: string;
+  PESOBRUTO?: string;
+  PESOCUBADO?: string;
+}
+
+export type ClassRating = 'A' | 'B' | 'C' | 'P' | 'Q' | 'R' | 'N/A'; // N/A for unclassified
+
+export interface AnalyticsData {
+  abcClass: ClassRating;
+  pqrClass: ClassRating;
+  combinedClass: string; // Ex: "AP", "AR", "CQ"
+  dailyVisits: number;
+  dailyVolume: number;
+  score: number; // For sorting suggestions
 }
 
 export interface MergedData {
   id: string; // SEQENDERECO
   rawAddress: RawAddressRow;
   rawItem?: RawItemRow;    // Apanha Stock
-  pulmaoItem?: RawItemRow; // Pulmão Stock (New)
+  pulmaoItem?: RawItemRow; // Pulmão Stock
   
   // Parsed Coordinates for 3D/2D
   x: number; // Based on RUA
@@ -51,10 +69,25 @@ export interface MergedData {
   
   color: string;
   isTunnel: boolean;
-  sector: string; // [NOVO] Setor extraído da DESCRUA
+  sector: string;
+  
+  // Analytics
+  analytics?: AnalyticsData;
 }
 
-export type ViewMode = '3D_ORBIT' | '3D_WALK' | '2D_PLAN';
+export interface Suggestion {
+  itemId: string;
+  productCode: string;
+  productDesc: string;
+  fromAddress: string;
+  toAddress: string;
+  fromId: string;
+  toId: string;
+  priority: 'HIGH' | 'MEDIUM' | 'LOW';
+  reason: string;
+}
+
+export type ViewMode = '3D_ORBIT' | '3D_WALK' | '2D_PLAN' | 'ANALYTICS';
 
 export type ReceiptFilterType = 'ALL' | 'YESTERDAY' | 'BEFORE_YESTERDAY' | 'THIS_WEEK' | 'THIS_MONTH' | 'SPECIFIC';
 
@@ -62,10 +95,10 @@ export interface FilterState {
   status: string[];
   type: string[]; // A or P
   search: string;
-  expiryDays: number | null; // Null = No filter, Number = Days until expiration
-  sector: string[]; // [NOVO] Filtro de setor
+  expiryDays: number | null; 
+  sector: string[];
   
   // Receipt Filter
   receiptType: ReceiptFilterType;
-  receiptDate: string; // YYYY-MM-DD for specific date input
+  receiptDate: string; 
 }
