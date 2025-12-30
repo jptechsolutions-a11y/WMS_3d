@@ -50,7 +50,21 @@ export const COLORS = {
   TUNNEL_HIGHLIGHT: '#06b6d4',
   HOVER: '#ffffff',
   SELECTED: '#06b6d4', 
-  TEXT_LABEL: '#000000'
+  TEXT_LABEL: '#000000',
+
+  // ANALYTICS COLORS
+  CLASS_A: '#22c55e', // Green
+  CLASS_B: '#eab308', // Yellow
+  CLASS_C: '#ef4444', // Red
+  
+  CLASS_P: '#22c55e', // Green
+  CLASS_Q: '#eab308', // Yellow
+  CLASS_R: '#ef4444', // Red
+
+  // Priority
+  PRIORITY_HIGH: '#ef4444',
+  PRIORITY_MEDIUM: '#eab308',
+  PRIORITY_LOW: '#3b82f6'
 };
 
 export const STATUS_LABELS = {
