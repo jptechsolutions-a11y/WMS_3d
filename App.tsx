@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Scene3D } from './components/Scene3D';
 import { Scene2D } from './components/Scene2D';
-import { AnalyticsView } from './components/AnalyticsView'; // Novo componente
+import { AnalyticsView } from './components/AnalyticsView';
 import { Sidebar } from './components/Sidebar';
 import { Handheld } from './components/Handheld';
 import { processData, parseCSV, calculateAnalytics, generateSuggestions } from './utils/dataProcessor';
-import { MergedData, ViewMode, FilterState, RawAddressRow, RawItemRow, AddressStatus, ReceiptFilterType, Suggestion } from './types';
-import { Upload, AlertTriangle } from 'lucide-react';
+import { MergedData, ViewMode, FilterState, RawAddressRow, RawItemRow, RawMetricsRow, AddressStatus, ReceiptFilterType, Suggestion } from './types';
+import { Upload, AlertTriangle, FileSpreadsheet } from 'lucide-react';
 
 const parseDatePTBR = (dateStr: string): Date | null => {
   if (!dateStr) return null;
@@ -36,14 +36,13 @@ export default function App() {
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [selectedSuggestion, setSelectedSuggestion] = useState<Suggestion | null>(null);
   const [analyticsViewType, setAnalyticsViewType] = useState<'ABC' | 'PQR' | 'COMBINED'>('COMBINED');
-  const [showSuggestionMap, setShowSuggestionMap] = useState(false);
-
+  
   const [colorMode, setColorMode] = useState<'REALISTIC' | 'STATUS'>('REALISTIC');
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [teleportPos, setTeleportPos] = useState<{x:number, y:number, z:number} | null>(null);
   const [loading, setLoading] = useState(false);
   
-  const [files, setFiles] = useState<{ structure?: File, items?: File, pulmao?: File }>({});
+  const [files, setFiles] = useState<{ structure?: File, items?: File, pulmao?: File, metrics?: File }>({});
 
   const [filters, setFilters] = useState<FilterState>({
     status: [AddressStatus.Occupied, AddressStatus.Available, AddressStatus.Reserved, AddressStatus.Blocked],
@@ -205,7 +204,7 @@ export default function App() {
     return s;
   }, [activeData, filters, visibleItemIds]);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, type: 'structure' | 'items' | 'pulmao') => {
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, type: 'structure' | 'items' | 'pulmao' | 'metrics') => {
     if (e.target.files && e.target.files[0]) {
       setFiles(prev => ({ ...prev, [type]: e.target.files![0] }));
     }
@@ -218,7 +217,9 @@ export default function App() {
       const addresses = await parseCSV<RawAddressRow>(files.structure);
       const items = files.items ? await parseCSV<RawItemRow>(files.items) : [];
       const pulmao = files.pulmao ? await parseCSV<RawItemRow>(files.pulmao) : [];
-      const merged = processData(addresses, items, pulmao);
+      const metrics = files.metrics ? await parseCSV<RawMetricsRow>(files.metrics) : [];
+      
+      const merged = processData(addresses, items, pulmao, metrics);
       setData(merged);
     } catch (err) {
       console.error(err);
@@ -243,8 +244,7 @@ export default function App() {
 
   const handleSelectSuggestion = (s: Suggestion) => {
      setSelectedSuggestion(s);
-     setShowSuggestionMap(true); // Auto-switch to suggestion view map
-     // Auto Select source item for details
+     // Note: showSuggestionMap is deprecated in split view, handled by dual Canvas
      setSelectedId(s.fromId);
   };
 
@@ -262,25 +262,28 @@ export default function App() {
           
           <div className="space-y-4">
             <div>
-              <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">Estrutura (Endereços) *</label>
+              <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">1. Estrutura (Endereços) *</label>
               <input type="file" accept=".csv" onChange={(e) => handleFileChange(e, 'structure')} className="w-full text-sm text-slate-300 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-cyan-600 file:text-white hover:file:bg-cyan-700 cursor-pointer file:cursor-pointer" />
             </div>
             <div>
-              <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">Estoque Apanha + Métricas</label>
+              <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">2. Estoque Apanha (Produtos)</label>
                <input type="file" accept=".csv" onChange={(e) => handleFileChange(e, 'items')} className="w-full text-sm text-slate-300 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-slate-700 file:text-slate-200 hover:file:bg-slate-600 cursor-pointer file:cursor-pointer" />
             </div>
             <div>
-              <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">Estoque Pulmão - Opcional</label>
+              <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">3. Métricas ABC/PQR (Opcional)</label>
+               <div className="flex items-center gap-2">
+                   <input type="file" accept=".csv" onChange={(e) => handleFileChange(e, 'metrics')} className="w-full text-sm text-slate-300 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-purple-600 file:text-white hover:file:bg-purple-700 cursor-pointer file:cursor-pointer" />
+               </div>
+               <p className="text-[9px] text-slate-500 mt-1">Colunas: VISITAS, VOLUMES, SEQENDERECO (ou CODIGO)</p>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">4. Estoque Pulmão (Opcional)</label>
                <input type="file" accept=".csv" onChange={(e) => handleFileChange(e, 'pulmao')} className="w-full text-sm text-slate-300 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-slate-700 file:text-slate-200 hover:file:bg-slate-600 cursor-pointer file:cursor-pointer" />
             </div>
           </div>
 
           <button onClick={handleImport} disabled={loading || !files.structure} className="w-full mt-8 bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3 rounded transition-all shadow-lg shadow-cyan-900/50">{loading ? 'Processando...' : 'Gerar Visualização'}</button>
           
-          <div className="mt-4 p-3 bg-cyan-900/20 border border-cyan-500/20 rounded text-cyan-400 text-xs flex gap-2">
-             <AlertTriangle size={16} />
-             <span>Importante: O arquivo de Apanha deve conter colunas VISITAS e VOLUMES para análise ABC/PQR.</span>
-          </div>
         </div>
       </div>
     );
@@ -319,8 +322,7 @@ export default function App() {
                 setWorkDays={setWorkDays}
                 viewType={analyticsViewType}
                 setViewType={setAnalyticsViewType}
-                showSuggestionMap={showSuggestionMap}
-                setShowSuggestionMap={setShowSuggestionMap}
+                filters={filters} // Passing filters for sector support
             />
         ) : viewMode.includes('3D') ? (
            <Scene3D 
