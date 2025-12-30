@@ -1,7 +1,7 @@
 import React from 'react';
 import { MergedData, ViewMode, AddressStatus, FilterState, ReceiptFilterType } from '../types';
 import { COLORS, STATUS_LABELS } from '../constants';
-import { Settings, Eye, Map, Box, Info, Search, Layers, Palette, CalendarClock, Truck, Tag, X } from 'lucide-react';
+import { Settings, Eye, Map, Box, Info, Search, Layers, Palette, CalendarClock, Truck, Tag, X, BarChart3 } from 'lucide-react';
 import clsx from 'clsx';
 import logoIcon from '/icon.png';
 
@@ -27,7 +27,7 @@ interface SidebarProps {
   colorMode: 'REALISTIC' | 'STATUS';
   setColorMode: (m: 'REALISTIC' | 'STATUS') => void;
   availableSectors: string[];
-  onCloseDetail: () => void; // [NOVO] Para fechar o painel
+  onCloseDetail: () => void;
 }
 
 const SimplePie = ({ percent, color }: { percent: number, color: string }) => {
@@ -44,7 +44,7 @@ const SimplePie = ({ percent, color }: { percent: number, color: string }) => {
     )
 }
 
-const ItemDetail = ({ label, item }: { label: string, item: any }) => {
+const ItemDetail = ({ label, item, analytics }: { label: string, item: any, analytics?: any }) => {
     if (!item) return null;
     
     const qty = parseFloat(item.ESTQ_LOCUS) || 0;
@@ -58,6 +58,25 @@ const ItemDetail = ({ label, item }: { label: string, item: any }) => {
                 <div className="font-medium text-white mb-1">{item.DESCRICAO}</div>
                 <div className="text-xs text-slate-400 mb-2">Cód: <span className="text-slate-300">{item.CODIGO}</span></div>
                 
+                {analytics && (
+                    <div className="grid grid-cols-2 gap-2 mb-2">
+                        <div className={clsx("p-1 rounded text-center text-[10px] font-bold border", 
+                            analytics.abcClass === 'A' ? "bg-green-500/20 border-green-500 text-green-400" :
+                            analytics.abcClass === 'B' ? "bg-yellow-500/20 border-yellow-500 text-yellow-400" :
+                            "bg-red-500/20 border-red-500 text-red-400"
+                        )}>
+                            ABC: {analytics.abcClass}
+                        </div>
+                        <div className={clsx("p-1 rounded text-center text-[10px] font-bold border", 
+                            analytics.pqrClass === 'P' ? "bg-green-500/20 border-green-500 text-green-400" :
+                            analytics.pqrClass === 'Q' ? "bg-yellow-500/20 border-yellow-500 text-yellow-400" :
+                            "bg-red-500/20 border-red-500 text-red-400"
+                        )}>
+                            PQR: {analytics.pqrClass}
+                        </div>
+                    </div>
+                )}
+
                 <div className="grid grid-cols-2 gap-2 bg-slate-900/50 p-2 rounded text-xs">
                     <div>
                         <span className="text-slate-500 block text-[9px] uppercase">Estoque</span>
@@ -133,17 +152,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   return (
     <>
-      {/* 1. SIDEBAR PRINCIPAL */}
       <div className="w-80 h-full bg-[#0f172a] border-r border-slate-800 flex flex-col text-slate-100 shadow-2xl z-30 font-sans relative">
         
-        {/* Header with Logo */}
         <div className="p-6 border-b border-slate-800 flex items-center bg-[#0b1120]">
-          {/* [CORREÇÃO] Caminho absoluto para o ícone na pasta public */}
-         <img 
-  src={logoIcon}
-  alt="JP Logo" 
-  className="h-10 w-auto mr-3"
-/>
+         <img src={logoIcon} alt="JP Logo" className="h-10 w-auto mr-3"/>
           <div>
               <h1 className="text-xl font-bold text-white leading-none tracking-tight">
               WMS <span className="text-cyan-400">3D</span>
@@ -153,22 +165,24 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
 
         {/* View Modes */}
-        <div className="p-4 grid grid-cols-3 gap-2 border-b border-slate-800/50">
+        <div className="p-4 grid grid-cols-4 gap-1 border-b border-slate-800/50">
           <button onClick={() => setViewMode('3D_ORBIT')} className={clsx("p-2 text-[10px] uppercase font-bold rounded flex flex-col items-center gap-1 transition-all duration-200", viewMode === '3D_ORBIT' ? "bg-cyan-600 text-white shadow-lg shadow-cyan-900/50" : "bg-slate-800/50 text-slate-400 hover:bg-slate-800 hover:text-cyan-400")}>
-            <Eye size={16} /> Orbital
+            <Eye size={14} /> 3D
           </button>
           <button onClick={() => setViewMode('3D_WALK')} className={clsx("p-2 text-[10px] uppercase font-bold rounded flex flex-col items-center gap-1 transition-all duration-200", viewMode === '3D_WALK' ? "bg-cyan-600 text-white shadow-lg shadow-cyan-900/50" : "bg-slate-800/50 text-slate-400 hover:bg-slate-800 hover:text-cyan-400")}>
-            <Settings size={16} /> Andar
+            <Settings size={14} /> Walk
           </button>
           <button onClick={() => setViewMode('2D_PLAN')} className={clsx("p-2 text-[10px] uppercase font-bold rounded flex flex-col items-center gap-1 transition-all duration-200", viewMode === '2D_PLAN' ? "bg-cyan-600 text-white shadow-lg shadow-cyan-900/50" : "bg-slate-800/50 text-slate-400 hover:bg-slate-800 hover:text-cyan-400")}>
-            <Map size={16} /> Planta
+            <Map size={14} /> 2D
+          </button>
+          <button onClick={() => setViewMode('ANALYTICS')} className={clsx("p-2 text-[10px] uppercase font-bold rounded flex flex-col items-center gap-1 transition-all duration-200", viewMode === 'ANALYTICS' ? "bg-purple-600 text-white shadow-lg shadow-purple-900/50" : "bg-slate-800/50 text-slate-400 hover:bg-slate-800 hover:text-purple-400")}>
+            <BarChart3 size={14} /> Análise
           </button>
         </div>
 
+        {viewMode !== 'ANALYTICS' && (
         <div className="flex-1 overflow-y-auto custom-scrollbar px-4 py-4">
           
-          {/* [REMOVIDO] A seção de detalhes estava aqui. Agora está no Drawer abaixo. */}
-
           <div>
             <h3 className="text-[10px] font-bold uppercase text-slate-500 mb-3 tracking-wider flex items-center gap-2"><Palette size={10}/> Visualização</h3>
             <div className="grid grid-cols-2 gap-2 mb-6">
@@ -220,7 +234,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   </div>
               )}
 
-            {/* Resto dos filtros (Status, Validade, etc.) */}
             <div className="mb-4">
               <div className="grid grid-cols-2 gap-2">
                 <button onClick={() => toggleType('A')} className={clsx("flex items-center justify-center gap-2 p-2 rounded text-xs font-medium border transition-all", filters.type.includes('A') ? "bg-cyan-600 border-cyan-500 text-white shadow-lg shadow-cyan-900/20" : "bg-slate-800/50 border-transparent text-slate-500 opacity-60 hover:opacity-100")}>
@@ -278,8 +291,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </div>
           </div>
         </div>
+        )}
+
+        {viewMode === 'ANALYTICS' && (
+            <div className="flex-1 p-4 flex flex-col items-center justify-center text-center text-slate-500 text-xs">
+                <BarChart3 size={48} className="mb-4 text-purple-500 opacity-50"/>
+                <p>Modo de Análise Ativo</p>
+                <p className="mt-2 text-[10px]">Use os controles à esquerda do painel principal para configurar parâmetros de Curva ABC/PQR.</p>
+            </div>
+        )}
         
-        {/* Footer */}
         <div className="p-4 bg-[#0b1120] border-t border-slate-800 text-xs space-y-4 shadow-[0_-10px_40px_rgba(0,0,0,0.5)] z-30">
           <div className="flex justify-around items-center">
               <div className="flex flex-col items-center gap-1">
@@ -304,16 +325,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
       </div>
 
-      {/* 2. DETAIL DRAWER (PAINEL DESLIZANTE) */}
       <div 
         className={clsx(
           "absolute top-0 bottom-0 w-80 bg-[#0f172a] border-r border-slate-800 z-20 transition-transform duration-300 ease-in-out shadow-2xl",
-          selectedItem ? "translate-x-80" : "translate-x-0" // Posicionado à esquerda (atrás da sidebar) ou movido para a direita (visível)
+          selectedItem ? "translate-x-80" : "translate-x-0" 
         )}
-        style={{ left: 0 }} // Ele começa na mesma posição da sidebar e desliza para a direita
+        style={{ left: 0 }} 
       >
         <div className="h-full flex flex-col p-4 overflow-y-auto">
-          {/* Header do Drawer */}
           <div className="flex justify-between items-center mb-6 pb-4 border-b border-slate-800/50">
              <h3 className="font-bold text-white flex items-center gap-2 text-xs uppercase tracking-wide">
                <Info size={14} className="text-cyan-400"/> Detalhes da Posição
@@ -348,7 +367,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   </div>
                 </div>
                 
-                <ItemDetail label="Apanha" item={selectedItem.rawItem} />
+                <ItemDetail label="Apanha" item={selectedItem.rawItem} analytics={selectedItem.analytics} />
                 <ItemDetail label="Pulmão" item={selectedItem.pulmaoItem} />
             </div>
           )}
